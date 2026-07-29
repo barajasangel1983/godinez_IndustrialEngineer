@@ -21,6 +21,8 @@ class GodinezState(MessagesState):
     # ── Classification ─────────────────────────────────────
     intent: Optional[str] = None        # Classified intent (e.g. "oee", "bottleneck", "trend")
     confidence: Optional[float] = None  # Classification confidence (0-1)
+    entities: dict = {}                 # Detected entities (machines, dates, shifts)
+    human_review: bool = False          # Flag for low-confidence classifications
 
     # ── Analysis Results ───────────────────────────────────
     # Each phase adds its result type here.
