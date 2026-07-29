@@ -166,3 +166,99 @@ class TestQueryEndpoint:
             # Verify tracing was enabled
             call_kwargs = mock_bw.call_args[1]
             assert call_kwargs["enable_tracing"] is True
+
+
+class TestChartEmbedding:
+    """Chart embedding tests (Phase 3)."""
+
+    def _mock_trend_workflow(self):
+        """Create a mock workflow that returns trend analysis with charts."""
+        workflow_mock = MagicMock()
+        compiled_mock = MagicMock()
+        compiled_mock.invoke.return_value = {
+            "query": "Show me OEE trends",
+            "messages": [],
+            "intent": "trend",
+            "confidence": 0.95,
+            "entities": {"start_date": "2024-01-01", "end_date": "2024-06-30"},
+            "human_review": False,
+            "response": "**Trend Analysis Report**\n\nOEE Trend: Stable with slight improvement.",
+            "errors": [],
+            "charts": [
+                {
+                    "path": "/tmp/oee_trend_chart.png",
+                    "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                    "type": "oee_trend",
+                    "filename": "oee_trend.png",
+                },
+                {
+                    "path": "/tmp/control_chart.png",
+                    "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                    "type": "control",
+                    "filename": "control_chart.png",
+                },
+            ],
+            "metadata": {
+                "trend_analysis": "complete",
+                "machines_analyzed": 2,
+                "data_points": 180,
+                "phase": "3",
+                "chart_count": 2,
+            },
+        }
+        metrics_mock = MagicMock()
+        metrics_mock.get_summary.return_value = {
+            "total_latency_ms": 300,
+            "execution_order": ["intake", "classify", "router", "trend", "response"],
+        }
+        # Fix: workflow_mock.compile() should return compiled_mock
+        workflow_mock.compile = MagicMock(return_value=compiled_mock)
+        return (workflow_mock, {"metrics": metrics_mock})
+
+    def test_trend_query_includes_charts(self, client):
+        """Trend query response includes charts array with base64 data."""
+        with patch("src.api.app.build_workflow", return_value=self._mock_trend_workflow()):
+            resp = client.post(
+                "/api/query",
+                json={"query": "Show me OEE trends for all lines"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+
+            assert data["success"] is True
+            assert data["intent"] == "trend"
+            assert "charts" in data
+            assert isinstance(data["charts"], list)
+            assert len(data["charts"]) == 2
+
+            # Verify chart structure
+            for chart in data["charts"]:
+                assert "path" in chart
+                assert "base64" in chart
+                assert "type" in chart
+                assert "filename" in chart
+                # Base64 data should be valid
+                assert len(chart["base64"]) > 0
+                assert isinstance(chart["base64"], str)
+
+    def test_trend_query_metadata_includes_chart_count(self, client):
+        """Metadata includes chart count from response node."""
+        with patch("src.api.app.build_workflow", return_value=self._mock_trend_workflow()):
+            resp = client.post(
+                "/api/query",
+                json={"query": "Show me OEE trends"},
+            )
+            data = resp.json()
+            assert data["metadata"]["chart_count"] == 2
+            assert data["metadata"]["phase"] == "3"
+
+    def test_non_trend_query_has_empty_charts(self, client):
+        """Non-trend queries return empty or None charts."""
+        with patch("src.api.app.build_workflow", return_value=_make_simple_result("oee")):
+            resp = client.post(
+                "/api/query",
+                json={"query": "What's our OEE today?"},
+            )
+            data = resp.json()
+            # Should have empty or None charts for non-trend queries
+            assert data.get("charts") is None or data.get("charts") == []

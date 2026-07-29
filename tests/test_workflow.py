@@ -461,12 +461,13 @@ class TestMultiIntentChaining:
     """Phase 2 Step 3: Multi-intent chaining tests."""
 
     def test_analyze_multiple_handlers_registered(self):
-        """All three handlers should be registered in orchestrator."""
+        """All four handlers should be registered in orchestrator."""
         from src.graph.nodes.analyze import ANALYSIS_HANDLERS
         assert "oee" in ANALYSIS_HANDLERS
         assert "bottleneck" in ANALYSIS_HANDLERS
         assert "cost" in ANALYSIS_HANDLERS
-        assert len(ANALYSIS_HANDLERS) == 3
+        assert "trend" in ANALYSIS_HANDLERS
+        assert len(ANALYSIS_HANDLERS) == 4
 
 
 if __name__ == "__main__":

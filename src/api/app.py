@@ -77,6 +77,7 @@ class QueryResponse(BaseModel):
     user_id: Optional[str] = None
     metadata: dict = {}
     execution_summary: dict = {}
+    charts: Optional[list[dict]] = None  # Base64-encoded chart data for trend analysis
     success: bool = True
 
 
@@ -139,6 +140,7 @@ def _run_query(
             user_id=user_id,
             metadata=metadata,
             execution_summary=summary,
+            charts=result.get("charts"),  # Include base64 chart data for trend analysis
             success=True,
         )
 

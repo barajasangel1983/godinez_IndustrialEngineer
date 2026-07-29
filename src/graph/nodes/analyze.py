@@ -12,12 +12,14 @@ from ..state import GodinezState
 from . import oee_analysis
 from . import bottleneck
 from . import cost_analysis
+from . import trend_analysis
 
 # Phase 1+ analysis capabilities
 ANALYSIS_HANDLERS = {
     "oee": oee_analysis.oee_analysis_node,
     "bottleneck": bottleneck.bottleneck_node,
     "cost": cost_analysis.cost_node,
+    "trend": trend_analysis.trend_analysis_node,
 }
 
 

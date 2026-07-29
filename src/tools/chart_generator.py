@@ -1,21 +1,29 @@
 """
-Chart Generator — Create OEE and production visualization charts
+Chart Generator — Create OEE and production visualization charts.
+
+Phase 3+: Updated to use chart_templates for trend analysis charts,
+maintains backwards compatibility with existing create_oee_trend_chart
+and create_downtime_pie_chart signatures.
 """
 
 import matplotlib
-matplotlib.use("Agg")  # Non-interactive backend for server environments
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from datetime import datetime
+matplotlib.use("Agg")
 from typing import Optional
 
 from .oee_calculator import OEEResult, calculate_oee
+from .chart_templates import (
+    create_oee_trend_chart as _new_oee_trend_chart,
+    create_pareto_chart,
+    create_control_chart,
+)
 
 
 def create_oee_trend_chart(results: list[OEEResult], dates: list[str], title: str = "OEE Trend") -> Optional[str]:
     """
     Create an OEE trend chart with component breakdown.
     
+    Backwards-compatible wrapper around chart_templates version.
+
     Args:
         results: List of OEEResult objects
         dates: List of date strings
@@ -26,69 +34,91 @@ def create_oee_trend_chart(results: list[OEEResult], dates: list[str], title: st
     """
     if len(results) < 2:
         return None
-    
+
     try:
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), gridspec_kw={"height_ratios": [1, 1]})
-        fig.suptitle(title, fontsize=16, fontweight="bold")
-        
-        # Convert dates
-        x_dates = [datetime.strptime(d, "%Y-%m-%d") for d in dates]
-        
-        # Top plot: OEE components
-        ax1.plot(x_dates, [r.availability for r in results], "b-o", label="Availability", linewidth=2)
-        ax1.plot(x_dates, [r.performance for r in results], "g-o", label="Performance", linewidth=2)
-        ax1.plot(x_dates, [r.quality for r in results], "r-o", label="Quality", linewidth=2)
-        ax1.plot(x_dates, [r.oee for r in results], "k--", label="OEE", linewidth=3)
-        
-        # Add threshold lines
-        ax1.axhline(y=85, color="green", linestyle=":", alpha=0.5, label="Good (85%)")
-        ax1.axhline(y=75, color="orange", linestyle=":", alpha=0.5, label="Needs Improvement (75%)")
-        ax1.axhline(y=60, color="red", linestyle=":", alpha=0.5, label="Critical (60%)")
-        
-        ax1.set_ylabel("Percentage (%)")
-        ax1.set_title("OEE Components Over Time")
-        ax1.legend(loc="lower right")
-        ax1.grid(True, alpha=0.3)
-        
-        # Format x-axis
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-        ax1.xaxis.set_major_locator(mdates.DayLocator())
-        plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha="right")
-        
-        # Bottom plot: OEE score with rating
-        oee_scores = [r.oee for r in results]
-        ax2.bar(range(len(x_dates)), oee_scores, color="steelblue", alpha=0.7)
-        ax2.axhline(y=85, color="green", linestyle="--", alpha=0.5)
-        ax2.axhline(y=60, color="red", linestyle="--", alpha=0.5)
-        
-        # Add rating labels
-        ratings = [r.rating.replace("_", " ").title() for r in results]
-        for i, (x, oee, rating) in enumerate(zip(range(len(x_dates)), oee_scores, ratings)):
-            ax2.text(x, oee + 1, f"{oee:.1f}%\n{rating}", ha="center", fontsize=8)
-        
-        ax2.set_ylabel("OEE Score (%)")
-        ax2.set_title("Overall OEE Score")
-        ax2.set_xticks(range(len(x_dates)))
-        ax2.set_xticklabels([d.strftime("%m/%d") for d in x_dates], rotation=45, ha="right")
-        ax2.grid(True, alpha=0.3, axis="y")
-        
-        plt.tight_layout()
-        
-        # Save chart
-        chart_path = "/tmp/oee_trend_chart.png"
-        plt.savefig(chart_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        
+        # Convert OEEResult objects to dict format for templates
+        template_data = [
+            {
+                "date": dates[i],
+                "oee": results[i].oee,
+                "availability": results[i].availability,
+                "performance": results[i].performance,
+                "quality": results[i].quality,
+            }
+            for i in range(len(results))
+        ]
+
+        chart_path = _new_oee_trend_chart(
+            template_data,
+            title=title,
+            show_forecast=False,  # Keep old behavior default
+        )
+
         return chart_path
-    
+
     except Exception as e:
         print(f"❌ Chart generation failed: {e}")
         return None
 
 
+def create_trend_analysis_charts(
+    oee_values: list[float],
+    availability_values: list[float],
+    performance_values: list[float],
+    quality_values: list[float],
+    dates: list[str],
+    forecast: bool = True,
+) -> list[str]:
+    """
+    Create a suite of trend analysis charts.
+    
+    Phase 3+: Returns list of chart paths including forecast, control, and Pareto.
+    
+    Args:
+        oee_values: OEE time series
+        availability_values: Availability time series
+        performance_values: Performance time series
+        quality_values: Quality time series
+        dates: Date strings
+        forecast: Whether to include forecast overlay
+    
+    Returns:
+        List of chart file paths
+    """
+    charts = []
+
+    if len(oee_values) < 2:
+        return charts
+
+    # OEE trend chart
+    oee_data = [
+        {
+            "date": dates[i],
+            "oee": oee_values[i],
+            "availability": availability_values[i],
+            "performance": performance_values[i],
+            "quality": quality_values[i],
+        }
+        for i in range(len(oee_values))
+    ]
+
+    trend_path = _new_oee_trend_chart(oee_data, show_forecast=forecast)
+    if trend_path:
+        charts.append(trend_path)
+
+    # Control chart
+    control_path = create_control_chart(oee_values, dates)
+    if control_path:
+        charts.append(control_path)
+
+    return charts
+
+
 def create_downtime_pie_chart(downtime_reasons: dict[str, float], title: str = "Downtime Breakdown") -> Optional[str]:
     """
     Create a pie chart showing downtime reasons.
+    
+    Backwards-compatible wrapper around chart_templates version.
     
     Args:
         downtime_reasons: Dictionary mapping reasons to minutes
@@ -101,38 +131,12 @@ def create_downtime_pie_chart(downtime_reasons: dict[str, float], title: str = "
         return None
     
     try:
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        reasons = list(downtime_reasons.keys())
-        minutes = list(downtime_reasons.values())
-        
-        colors = plt.cm.Set3(range(len(reasons)))
-        
-        wedges, texts, autotexts = ax.pie(
-            minutes,
-            labels=reasons,
-            autopct="%1.1f%%",
-            colors=colors,
-            startangle=90,
-            textprops={"fontsize": 10}
+        chart_path = create_pareto_chart(
+            list(downtime_reasons.keys()),
+            list(downtime_reasons.values()),
+            title=title,
         )
-        
-        ax.set_title(title, fontsize=14, fontweight="bold")
-        
-        # Calculate total and add summary
-        total = sum(minutes)
-        summary_text = f"Total Downtime: {total:.0f} minutes"
-        ax.text(0.5, -0.1, summary_text, transform=ax.transAxes, 
-                ha="center", fontsize=12, fontweight="bold")
-        
-        plt.tight_layout()
-        
-        chart_path = "/tmp/downtime_pie_chart.png"
-        plt.savefig(chart_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        
         return chart_path
-    
     except Exception as e:
         print(f"❌ Downtime chart generation failed: {e}")
         return None
