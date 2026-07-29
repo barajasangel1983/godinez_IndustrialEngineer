@@ -324,9 +324,9 @@ class TestOrchestratorNode:
         """Unimplemented intent should return 'not yet implemented' message."""
         from src.graph.nodes.analyze import analyze_node
         result = analyze_node({
-            "query": "Show me bottlenecks",
-            "intent": "bottleneck",
-            "messages": [{"role": "user", "content": "Show me bottlenecks"}],
+            "query": "Show me safety violations",
+            "intent": "safety",
+            "messages": [{"role": "user", "content": "Show me safety violations"}],
         })
         assert "not yet implemented" in result["response"].lower()
         assert "oee" in result["response"]  # Should list implemented intents
@@ -354,6 +354,119 @@ class TestOrchestratorNode:
         assert "analyzed_intents" in result["metadata"]
         assert "oee" in result["metadata"]["analyzed_intents"]
         assert result["metadata"]["analysis_result_count"] >= 1
+
+    def test_analyze_bottleneck_dispatch(self):
+        """Bottleneck intent should dispatch to bottleneck_node."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "Find bottlenecks on Line 3",
+            "intent": "bottleneck",
+            "messages": [{"role": "user", "content": "Find bottlenecks"}],
+        })
+        assert "response" in result
+        assert "Bottleneck" in result["response"]
+        assert "Findings" in result["response"]
+
+    def test_analyze_cost_dispatch(self):
+        """Cost intent should dispatch to cost_node."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "What are our scrap costs?",
+            "intent": "cost",
+            "messages": [{"role": "user", "content": "scrap costs"}],
+        })
+        assert "response" in result
+        assert "Cost" in result["response"]
+        assert "$" in result["response"]
+
+
+class TestBottleneckNode:
+    """Phase 2 Step 3: Bottleneck detection node tests."""
+
+    def test_bottleneck_node_runs(self):
+        """Bottleneck node should process data and return findings."""
+        from src.graph.nodes.bottleneck import bottleneck_node
+        result = bottleneck_node({
+            "query": "Find bottlenecks",
+            "intent": "bottleneck",
+            "messages": [{"role": "user", "content": "Find bottlenecks"}],
+        })
+        assert "response" in result
+        assert "Bottleneck" in result["response"]
+
+    def test_bottleneck_returns_metadata(self):
+        """Bottleneck node should return metadata with findings count."""
+        from src.graph.nodes.bottleneck import bottleneck_node
+        result = bottleneck_node({
+            "query": "Find bottlenecks",
+            "intent": "bottleneck",
+        })
+        assert "metadata" in result
+        assert "total_findings" in result["metadata"]
+        assert result["metadata"]["total_findings"] >= 0
+
+    def test_bottleneck_has_findings(self):
+        """Bottleneck analysis should detect at least some findings."""
+        from src.graph.nodes.bottleneck import bottleneck_node
+        result = bottleneck_node({
+            "query": "Find bottlenecks",
+            "intent": "bottleneck",
+        })
+        # Should have at least some throughput findings
+        bottleneck_data = result["analysis_results"].get("bottleneck", {})
+        assert bottleneck_data.get("findings_count", 0) > 0
+
+
+class TestCostNode:
+    """Phase 2 Step 3: Cost analysis node tests."""
+
+    def test_cost_node_runs(self):
+        """Cost node should process data and return cost breakdown."""
+        from src.graph.nodes.cost_analysis import cost_node
+        result = cost_node({
+            "query": "What are our scrap costs?",
+            "intent": "cost",
+            "messages": [{"role": "user", "content": "scrap costs"}],
+        })
+        assert "response" in result
+        assert "Cost" in result["response"]
+        assert "$" in result["response"]
+
+    def test_cost_returns_metadata(self):
+        """Cost node should return metadata with waste cost."""
+        from src.graph.nodes.cost_analysis import cost_node
+        result = cost_node({
+            "query": "What are our scrap costs?",
+            "intent": "cost",
+        })
+        assert "metadata" in result
+        assert "total_waste_cost" in result["metadata"]
+        assert result["metadata"]["total_waste_cost"] >= 0
+
+    def test_cost_has_breakdown(self):
+        """Cost analysis should include scrap, rework, and downtime costs."""
+        from src.graph.nodes.cost_analysis import cost_node
+        result = cost_node({
+            "query": "What are our scrap costs?",
+            "intent": "cost",
+        })
+        cost_data = result["analysis_results"]["cost"]
+        assert "scrap_cost" in cost_data
+        assert "rework_cost" in cost_data
+        assert "downtime_cost" in cost_data
+        assert "total_waste_cost" in cost_data
+
+
+class TestMultiIntentChaining:
+    """Phase 2 Step 3: Multi-intent chaining tests."""
+
+    def test_analyze_multiple_handlers_registered(self):
+        """All three handlers should be registered in orchestrator."""
+        from src.graph.nodes.analyze import ANALYSIS_HANDLERS
+        assert "oee" in ANALYSIS_HANDLERS
+        assert "bottleneck" in ANALYSIS_HANDLERS
+        assert "cost" in ANALYSIS_HANDLERS
+        assert len(ANALYSIS_HANDLERS) == 3
 
 
 if __name__ == "__main__":
