@@ -305,5 +305,56 @@ class TestKeywordFallback:
         assert r.confidence == 0.4
 
 
+class TestOrchestratorNode:
+    """Phase 2 Step 2: Orchestrator Analysis Node tests."""
+
+    def test_analyze_oee_dispatch(self):
+        """OEE intent should dispatch to oee_analysis_node."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "What's our OEE?",
+            "intent": "oee",
+            "messages": [{"role": "user", "content": "What's our OEE?"}],
+        })
+        assert "response" in result
+        assert "OEE" in result["response"]
+        assert "%" in result["response"]
+
+    def test_analyze_unimplemented_intent(self):
+        """Unimplemented intent should return 'not yet implemented' message."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "Show me bottlenecks",
+            "intent": "bottleneck",
+            "messages": [{"role": "user", "content": "Show me bottlenecks"}],
+        })
+        assert "not yet implemented" in result["response"].lower()
+        assert "oee" in result["response"]  # Should list implemented intents
+
+    def test_analyze_accumulates_results(self):
+        """Results should be accumulated in analysis_results dict."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "OEE analysis",
+            "intent": "oee",
+            "messages": [{"role": "user", "content": "OEE analysis"}],
+        })
+        assert "analysis_results" in result
+        assert result["analysis_results"] is not None
+        assert isinstance(result["analysis_results"], dict)
+
+    def test_analyze_metadata_tracking(self):
+        """Metadata should track which intents were analyzed."""
+        from src.graph.nodes.analyze import analyze_node
+        result = analyze_node({
+            "query": "OEE analysis",
+            "intent": "oee",
+            "messages": [{"role": "user", "content": "OEE analysis"}],
+        })
+        assert "analyzed_intents" in result["metadata"]
+        assert "oee" in result["metadata"]["analyzed_intents"]
+        assert result["metadata"]["analysis_result_count"] >= 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
