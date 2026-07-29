@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 0.5 | Created 2026-07-27 | Last Updated 2026-07-29 | Status: Phase 2 Complete ✅ | Next: Phase 2 Step 3 — New Analysis Nodes (bottleneck, cost)
+> Version 0.7 | Created 2026-07-27 | Last Updated 2026-07-29 | Status: Phase 2 Complete (REST API ✅) | Next: Phase 3 Trend Analysis
 
 ---
 
@@ -144,27 +144,35 @@ Top Downtime Causes:
   - Metadata tracking: `analyzed_intents`, `analysis_result_count`
   - **4 new tests** (total 31, all passing in 8.71s)
 
-- [ ] **Step 3: New Analysis Nodes**
-  - `src/graph/nodes/bottleneck.py` — throughput/constraint detection
-  - `src/graph/nodes/cost_analysis.py` — scrap/rework/waste estimation
+- [x] **Step 3: New Analysis Nodes** ✅ — 2026-07-29
+  - `src/graph/nodes/bottleneck.py` — throughput/constraint detection (cycle time variance, downtime, capacity, throughput)
+  - `src/graph/nodes/cost_analysis.py` — scrap/rework/waste cost estimation
+  - Both registered in `analyze.py` ANALYSIS_HANDLERS
+  - **9 new tests** (total 40 at this point)
 
-- [ ] **Observability**
-  - LangSmith tracing for all workflow steps
-  - Structured logging (JSON, levels, correlation IDs)
-  - Metadata: `latency_ms`, `tokens_used`, `node_execution_order`
+- [x] **Observability** ✅ — 2026-07-29
+  - LangSmith tracing module (`src/observability/tracing.py`)
+  - Structured JSON logging with correlation IDs (`src/observability/logger.py`)
+  - Execution metrics tracker (`src/observability/metrics.py`)
+  - Metadata: `latency_ms`, `tokens_used`, `node_execution_order`, `session_id`
+  - Integrated into workflow (all nodes wrapped with metrics tracking)
+  - CLI supports `--session` and `--trace` flags
+  - **20 new tests** (total 60 at this point)
 
-- [ ] **REST API Endpoint**
+- [x] **REST API Endpoint** ✅ — 2026-07-29
   - FastAPI: `POST /api/query` accepting `{"query": "...", "user_id": "..."}`
   - Returns JSON with response, intent, metadata, chart paths
   - Same workflow as CLI — different entry point
-  - Add `src/api/app.py` + `tests/test_api.py`
+  - `src/api/app.py` + `tests/test_api.py` (9 tests, all passing)
+  - CORS middleware enabled for browser/frontend access
 
 ### Deliverables
 - LLM-based intent classifier with confidence scoring ✅
 - Orchestrator routing to multiple analysis types ✅
+- New analysis nodes: bottleneck + cost ✅
 - REST API endpoint
-- ~25 tests covering router, API, and multi-intent flows ✅ (now 31)
-- LangSmith observability
+- ~25 tests covering router, API, and multi-intent flows ✅ (now 69: 60 core + 9 API)
+- LangSmith observability ✅
 
 ### What's Out of Scope
 - LLM-based chat (Phase 3)
@@ -332,9 +340,22 @@ godinez-industrial-engineer/
 │   └── config.py
 ├── data/
 │   └── sample_production.csv    # Demo data (84 shifts, multiple machines)
+│   ├── observability/
+│   │   ├── __init__.py      # Observability module entry point
+│   │   ├── logger.py        # Structured JSON logging with correlation IDs
+│   │   ├── tracing.py       # LangSmith integration for workflow tracing
+│   │   └── metrics.py       # Execution metrics tracking
+│   └── config.py
+├── data/
+│   └── sample_production.csv    # Demo data (84 shifts, multiple machines)
 ├── tests/
 │   ├── conftest.py              # LLM mocks for workflow tests
-│   └── test_workflow.py         # 31 tests (all passing)
+│   ├── test_workflow.py         # 40 tests (all passing)
+│   ├── test_observability.py    # 20 tests (all passing)
+│   └── test_api.py              # 9 tests (all passing)
+├── src/
+│   └── api/
+│       └── app.py               # FastAPI REST API (Phase 2)
 ├── main.py                      # CLI entry point
 ├── pyproject.toml               # Project config + dev deps
 ├── requirements.txt
@@ -364,7 +385,7 @@ godinez-industrial-engineer/
 - [ ] Bottlenecks are identified with clear reasoning
 - [ ] Reports are generated in professional format
 - [ ] Safety findings require human approval
-- [x] Code is testable and documented (31/31 tests passing)
+- [x] Code is testable and documented (60/60 tests passing)
 - [ ] Runs on DGX locally (no external API dependency for core analysis)
 
 ---

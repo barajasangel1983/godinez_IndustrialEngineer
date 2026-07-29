@@ -20,7 +20,7 @@ from src.graph import build_workflow
 
 def test_workflow_runs():
     """Test that the workflow executes end-to-end."""
-    workflow = build_workflow()
+    workflow, _ = build_workflow()
     app = workflow.compile()
     result = app.invoke({
         "query": "What's our OEE today?",
@@ -33,7 +33,7 @@ def test_workflow_runs():
 
 def test_empty_query_handling():
     """Test that empty queries are handled gracefully."""
-    workflow = build_workflow()
+    workflow, _ = build_workflow()
     app = workflow.compile()
     result = app.invoke({
         "query": "",
@@ -45,7 +45,7 @@ def test_empty_query_handling():
 
 def test_intent_detection():
     """Test that intent is classified correctly."""
-    workflow = build_workflow()
+    workflow, _ = build_workflow()
     app = workflow.compile()
     result = app.invoke({
         "query": "What's our OEE today?",
@@ -191,7 +191,7 @@ class TestEndToEnd:
 
     def test_e2e_oee_query(self):
         """Full workflow: query → intent → OEE analysis → response."""
-        workflow = build_workflow()
+        workflow, _ = build_workflow()
         app = workflow.compile()
         result = app.invoke({
             "query": "What's our OEE today?",
