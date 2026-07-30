@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 0.8 | Created 2026-07-27 | Last Updated 2026-07-29 | Status: Phase 3 Complete (Trend Analysis ✅) | Next: Phase 4 Bottleneck & Cost
+> Version 0.9 | Created 2026-07-27 | Last Updated 2026-07-30 | Status: Phase 4 Complete ✅ | Next: Phase 5 Safety & Human-in-the-Loop
 
 ---
 
@@ -279,30 +279,84 @@ Intent: "trend"
 
 ---
 
-## Phase 4: Bottleneck Detection & Cost Analysis (Week 5)
+## Phase 4: Bottleneck Detection & Cost Analysis (Week 5) ✅ COMPLETE
 
 **Goal:** Two more analysis nodes — identifying constraints and quantifying waste.
+**Status:** Complete ✅ — 2026-07-30
+**Total tests:** 115 passing (11.09s)
 
-### Tasks
-- [ ] Extend state with `BottleneckResult` and `CostResult` models
-- [ ] Implement `tools/analysis/bottleneck_detector.py`:
-  - Line balance calculation
-  - Cycle time variance analysis
-  - Constraint identification (highest WIP, longest queue)
-  - Improvement suggestions (Theory of Constraints)
-- [ ] Implement `tools/analysis/cost_estimator.py`:
-  - Scrap cost calculation
-  - Rework cost tracking
+### Completed ✅
+- [x] **Step 4.0: State Models & Synthetic Data** ✅
+  - `BottleneckResult` model — `state.py` (constraint_station, findings, metrics, severity)
+  - `CostResult` model — `state.py` (breakdown, roi_projections, waste_pareto)
+  - `CostBreakdown` + `BottleneckFinding` Pydantic models
+  - `tools/synthetic_data.py` — 3 generators (production, bottleneck, cost)
+  - Synthetic data supports realistic constraint/cost scenarios (Line-2 bottleneck pattern)
+
+- [x] **Step 4.1: Bottleneck Detector Engine** ✅
+  - `tools/analysis/bottleneck_detector.py` — `BottleneckDetector.analyze(rows)`
+  - Line balance calculation (balance_delay_pct, theoretical_best_station_time)
+  - Cycle time variance analysis (per-station std dev, coefficient of variation)
+  - Constraint identification (highest avg cycle time, throughput ranking)
+  - Improvement suggestions (Theory of Constraints prioritization)
+  - Severity scoring: critical (>30% delay), high (20-30%), medium (10-20%), low (<10%)
+  - `to_dict()` serialization
+
+- [x] **Step 4.2: Cost Estimator Engine** ✅
+  - `tools/analysis/cost_estimator.py` — `CostEstimator.analyze(rows, config)`
+  - Scrap cost calculation (units × scrap rate × cost_per_part)
+  - Rework cost tracking (estimated rework minutes × labor_rate)
+  - Downtime cost (total_downtime_min × downtime_cost_per_min)
   - ROI model for improvement suggestions
-  - Waste Pareto ranking
-- [ ] Add `bottleneck_detect` and `cost_analysis` nodes to graph
-- [ ] Update router for new intent categories
-- [ ] Test with synthetic line data
+  - Waste Pareto ranking (ParetoResult with top contributors)
+  - Configurable thresholds: scrap_rate_warn=5%, cost_per_part, labor_rate, downtime_cost_per_min
+  - `to_dict()` serialization with breakdown + roi_projections + waste_pareto
+
+- [x] **Step 4.3: Graph Integration + API** ✅
+  - `graph/nodes/bottleneck.py` — `bottleneck_node()`: reads CSV, runs `BottleneckDetector`, returns structured result
+  - `graph/nodes/cost_analysis.py` — `cost_analysis_node()`: reads CSV + config thresholds, runs `CostEstimator`
+  - `analyze.py` orchestrator: `ANALYSIS_HANDLERS` dict with oee/bottleneck/cost/trend handlers
+  - `router.py`: INTENT_KEYWORDS extended with bottleneck/cost terms
+  - `classify.py`: VALID_INTENTS extended, `_keyword_fallback` handles bottleneck/cost queries
+  - `POST /api/query` supports all intents (no filtering — same workflow for all)
+  - Response includes structured metadata: findings_count, total_waste_cost, analysis_result_count
+
+- [x] **Step 4.4: Integration Tests** ✅
+  - `tests/test_phase4.py` — 25 tests:
+    - State model tests (BottleneckResult, CostResult, nested models)
+    - Bottleneck detector tests (line balance, severity, constraint identification)
+    - Cost estimator tests (scrap cost, ROI projections, serialization)
+    - Synthetic data generation tests (production, bottleneck, cost CSVs)
+    - Full pipeline integration (generate → analyze → verify)
+  - Workflow tests (bottleneck_node, cost_node, multi-intent chaining)
+  - All 115 tests passing
 
 ### Deliverables
-- Bottleneck identification with severity ratings
-- Cost analysis with waste breakdown
-- ROI projections for improvement suggestions
+- ✅ Bottleneck identification with severity ratings (critical/high/medium/low)
+- ✅ Cost analysis with waste breakdown (scrap, rework, downtime)
+- ✅ ROI projections for improvement suggestions
+- ✅ Line balance analysis with constraint identification
+- ✅ Waste Pareto ranking
+- ✅ Synthetic data generators for testing
+- ✅ Full integration with workflow (classify → router → analyze → response)
+
+### Architecture
+```
+Intent: "bottleneck" / "cost"
+  → classify_node() [LLM → keyword → fallback]
+  → router_node() [keyword dispatch]
+  → analyze_node() [ANALYSIS_HANDLERS dispatch]
+    → bottleneck_node() [BottleneckDetector.analyze(rows)]
+      → _detect_throughput_constraints()
+      → _analyze_cycle_time_variance()
+      → _calculate_line_balance()
+    → cost_analysis_node() [CostEstimator.analyze(rows, config)]
+      → _calc_scrap_cost()
+      → _calc_rework_cost()
+      → _calc_downtime_cost()
+      → _estimate_roi()
+  → response_node() [text summary + metadata]
+```
 
 ### Reference
 - Theory of Constraints (Goldratt)
@@ -445,10 +499,11 @@ godinez-industrial-engineer/
 - [x] Agent processes natural language queries about manufacturing data
 - [x] OEE calculation is accurate and verifiable (deterministic, no LLM dependency)
 - [x] Trends are detected and forecasted with confidence intervals
-- [x] Bottlenecks are identified with clear reasoning
+- [x] Bottlenecks are identified with clear reasoning and severity ratings
+- [x] Cost analysis with waste breakdown (scrap, rework, downtime) and ROI projections
 - [x] Reports are generated in professional format with embedded charts
 - [ ] Safety findings require human approval
-- [x] Code is testable and documented (90/90 tests passing)
+- [x] Code is testable and documented (115/115 tests passing)
 - [x] Runs on DGX locally (no external API dependency for core analysis)
 
 ---
