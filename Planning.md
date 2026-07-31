@@ -566,22 +566,22 @@ Comprehensive test suite for Phase 5.
   - Error handling: non-fatal persistence failures (result still served, warning logged)
   - FastAPI `query_api()` function updated to accept and persist results
 
-- [x] **6.2: Test Suite for Persistence Layer** — Partially complete
-  - ⚠️  `tests/test_persistence.py` was planned but never committed
-  - 0 dedicated persistence tests exist; API integration tests cover basic query persistence flow
-  - Conftest fixtures: `test_client`, `sample_query_data`
+- [x] **6.2: Data Upload Endpoint** ✅ — 2026-07-31
+  - `POST /api/data`, `GET /api/data/list`, `DELETE /api/data/{filename}`
+  - `tests/test_data_api.py` — 21 tests (upload, list, delete, validation, security)
 
-- [x] **6.3: Documentation** ✅ — 2026-07-30
-  - README.md updated with `# Configuration` section documenting:
-    - Environment variables (`DATABASE_URL`, `LANGSMITH_*`, `MODEL_*`)
-    - Persistence setup (SQLite vs PostgreSQL)
-    - Alembic migration commands (`alembic upgrade head`, `alembic revision`)
-  - Architecture doc with persistence layer diagram
-  - Planning.md updated with Phase 6.0 completion details
+- [x] **6.3: FastAPI Server (existing routes)** ✅ — 2026-07-31
+  - `POST /api/query`, `GET /api/results/{session_id}`, `GET /api/persistence/status`, `GET /health`
 
-- [x] **6.4: CLI Integration** ✅ — 2026-07-30
-  - ✅ `src/cli/commands/analyze.py` persists CLI results to database automatically when `DATABASE_URL` is set
-  - Same persistence layer used by CLI and API (shared models + repositories)
+- [x] **6.4: Comprehensive Tests** ✅ — 2026-07-31
+  - `tests/test_comprehensive.py` — 60 tests (OEE/CSV/bottleneck/cost edge cases, full API chain, multi-intent, error recovery, security)
+  - `tests/test_persistence.py` — 26 tests (models, config, repositories, cascade delete, full pipeline)
+  - `tests/test_cli.py` — 35 tests (parser, all 5 commands, config overrides)
+
+- [x] **6.5: Configuration Management** ✅ — 2026-07-31
+  - `src/config/` package: frozen `Config` dataclass, `Config.load()` with 4-level precedence
+  - `tests/test_config.py` — 40 tests (defaults, JSON/env overrides, validation, backward compat)
+  - `.env.example` with all 18 configurable env vars
 
 ### Deliverables
 - ✅ SQLAlchemy models for Session/Query/AnalysisResult with cascade deletes
