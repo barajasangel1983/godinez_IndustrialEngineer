@@ -1,0 +1,67 @@
+services:
+
+  # ── Application ────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: production
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: "postgresql://godinez:${POSTGRES_PASSWORD:-godinez}@db:5432/godinez"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?Set OPENAI_API_KEY in your .env file}"
+      LANGSMITH_API_KEY: "${LANGSMITH_API_KEY:-}"
+      LANGCHAIN_TRACING_V2: "${LANGCHAIN_TRACING_V2:-false}"
+      LANGCHAIN_PROJECT: "${LANGCHAIN_PROJECT:-godinez-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      WORKERS: "${WORKERS:-2}"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
+
+  # ── PostgreSQL ─────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: godinez
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-godinez}"
+      POSTGRES_DB: godinez
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U godinez -d godinez"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis (optional — enable with: docker compose --profile cache up) ─
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - cache
+
+volumes:
+  app_data:   # /app/data — uploaded CSVs and SQLite fallback
+  db_data:    # PostgreSQL data directory
+  redis_data: # Redis AOF persistence

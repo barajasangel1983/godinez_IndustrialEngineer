@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 1.4.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
+> Version 1.5.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
 
 ---
 
@@ -765,6 +765,19 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] **Integration — Error recovery** (8 tests): LLM unavailable → 500 not crash, workflow invoke exception → 500, invalid CSV upload → 400 not 500, health always responds, missing query → 422, query too long → 422, nonexistent session, persistence failure non-fatal
 - [x] **Security** (9 tests): SQL injection in session_id, SQL injection in query body (echoed safely), XSS in query not executed, path traversal in DELETE (%2F), path traversal (backslash), subpath blocked, 50 MB limit enforced, empty upload rejected, non-CSV extension rejected
 
+#### Step 6.6: Production Deployment ✅
+- [x] `Dockerfile` — multi-stage build (builder: gcc + libpq-dev + pip install; production: libpq5 runtime only, non-root `godinez` user, `EXPOSE 8000`)
+- [x] `docker-compose.yml` — three services: `app` (built image), `db` (postgres:15-alpine), `redis` (redis:7-alpine, opt-in via `--profile cache`)
+  - App health check via `/health` endpoint
+  - DB health check via `pg_isready`; `app` waits on `service_healthy`
+  - Named volumes: `app_data`, `db_data`, `redis_data`
+  - `OPENAI_API_KEY` required; all other env vars have safe defaults
+- [x] `scripts/start.sh` — production startup: wait for DB (SQLAlchemy `SELECT 1` retry loop, 30 × 2 s) → `alembic upgrade head` → `exec uvicorn` (graceful shutdown via exec)
+  - `WORKERS` env var controls concurrency; capped to 1 when `DATABASE_URL` is SQLite or `off`
+  - `PORT`, `LOG_LEVEL` configurable via env vars
+- [x] `.dockerignore` — excludes `.git/`, `__pycache__/`, `.venv/`, `.env`, `tests/`, `.claude/`, `data/*.db`
+- [x] `psycopg2-binary>=2.9` installed in Dockerfile (not in `requirements.txt` — build-time only for the container)
+
 #### Step 6.5: Configuration Management ✅
 - [x] `src/config/` package replaces flat `src/config.py` (all existing imports unchanged)
 - [x] `src/config/loader.py` — frozen `Config` dataclass with six typed sections: `database`, `llm`, `oee`, `bottleneck`, `cost`, `graph`
@@ -883,6 +896,11 @@ godinez-industrial-engineer/
 │   ├── test_data_api.py         # 21 tests (upload, list, delete, validation, path traversal)
 │   ├── test_config.py           # 40 tests (defaults, JSON/env overrides, validation, backward compat)
 │   └── test_comprehensive.py    # 60 tests (OEE/CSV/bottleneck/cost edge cases, integration chain, security)
+├── scripts/
+│   └── start.sh                 # Production startup: wait DB → alembic upgrade → exec uvicorn
+├── Dockerfile                   # Multi-stage build (builder + production, non-root user)
+├── docker-compose.yml           # app + db (postgres:15) + redis (opt-in --profile cache)
+├── .dockerignore                # Excludes .git, tests/, .env, data/*.db from build context
 ├── main.py                      # Root CLI entry point (thin wrapper → src.cli.main.main)
 ├── .env.example                 # All configurable env vars with safe defaults (committed)
 ├── .godinez_config.json         # Runtime config (DB URL, thresholds — not committed)
