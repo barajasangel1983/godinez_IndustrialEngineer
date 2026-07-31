@@ -739,14 +739,23 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] `src/config.py` reads `.godinez_config.json` at import time to apply threshold/LLM overrides
 - [x] `tests/test_cli.py` — 35 tests: parser, all 5 commands, config overrides
 
-#### Step 6.2: FastAPI Server ✅
+#### Step 6.2: Data Upload Endpoint ✅
+- [x] `POST /api/data` — upload production CSV; validates extension, required columns, size (50 MB); saves with timestamped filename; returns row_count, columns, date_range, machine_ids
+- [x] `GET /api/data/list` — lists all CSVs in data/ with best-effort metadata; ignores non-CSV files
+- [x] `DELETE /api/data/{filename}` — removes dataset; rejects path traversal attempts
+- [x] Reuses `src/tools/csv_reader.py` for all parsing (no duplicate logic)
+- [x] `python-multipart>=0.0.9` added to `requirements.txt`
+- [x] Routes in `src/api/data_routes.py` (APIRouter, included in app.py)
+- [x] `tests/test_data_api.py` — 21 tests: upload, list, delete, validation, security
+
+#### Step 6.3: FastAPI Server (existing routes) ✅
 - [x] `POST /api/query` — run agent with query + persistence
 - [x] `GET /api/results/{session_id}` — retrieve past analyses (full result including response/charts)
 - [x] `GET /api/persistence/status` — check persistence configuration
 - [x] `GET /health` — health check with version + tracing status
 
 #### Other ✅
-- [x] Comprehensive test suite: 176 tests (176 passing)
+- [x] Comprehensive test suite: 197 tests (197 passing)
 - [x] README: setup guide, usage examples, configuration reference, architecture diagram
 - [x] Sample production data for demo
 - [x] Code review + cleanup:
@@ -843,7 +852,8 @@ godinez-industrial-engineer/
 │   ├── test_trend_engine.py     # 18 tests (trend analysis + anomaly detection)
 │   ├── test_phase4.py           # 25 tests (bottleneck + cost + state models)
 │   ├── test_persistence.py      # 26 tests (models, config, repositories, pipeline)
-│   └── test_cli.py              # 35 tests (parser, all 5 commands, config overrides)
+│   ├── test_cli.py              # 35 tests (parser, all 5 commands, config overrides)
+│   └── test_data_api.py         # 21 tests (upload, list, delete, validation, path traversal)
 ├── main.py                      # Root CLI entry point (argparse dispatcher → src.cli.commands)
 ├── .godinez_config.json         # Runtime config (DB URL, thresholds — not committed)
 ├── pyproject.toml

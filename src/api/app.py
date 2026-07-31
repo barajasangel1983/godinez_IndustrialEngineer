@@ -1,17 +1,16 @@
 """
 Godínez IndustrialEngineer — FastAPI REST API
 
-Phase 2: Provides HTTP endpoints for the same workflow logic
-as the CLI entry point.
-Phase 6.0: PostgreSQL persistence layer with results history.
-
 Usage:
     uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 
 Endpoints:
-    POST /api/query           — Run analysis on a natural language query
-    GET  /api/results/{sid}   — Retrieve all queries for a session
-    GET  /health              — Health check
+    POST /api/query             — Run analysis on a natural language query
+    GET  /api/results/{sid}     — Retrieve all queries for a session
+    POST /api/data              — Upload a production CSV dataset
+    GET  /api/data/list         — List available datasets
+    DELETE /api/data/{filename} — Remove a dataset
+    GET  /health                — Health check
 """
 
 import os
@@ -28,6 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.graph import build_workflow
+from src.api.data_routes import router as data_router
 
 # ── Persistence (optional, enabled via DATABASE_URL env var) ────
 from src.persistence import init_db, is_persistence_available
@@ -52,6 +52,8 @@ app = FastAPI(
     version="0.6.0",
     lifespan=lifespan,
 )
+
+app.include_router(data_router)
 
 # CORS (allow browser/frontend access)
 app.add_middleware(
