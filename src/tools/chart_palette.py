@@ -5,6 +5,9 @@ Provides a centralized color scheme and style configuration for all charts,
 ensuring visual consistency across the application.
 """
 
+import os
+import tempfile
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -111,8 +114,10 @@ def create_custom_cmap(name: str, colors: list[str], n: int = 256) -> LinearSegm
     return LinearSegmentedColormap.from_list(name, colors, N=n)
 
 
-def save_chart(fig, path: str = "/tmp/chart.png", bbox: str = "tight") -> str:
+def save_chart(fig, path: Optional[str] = None, bbox: str = "tight") -> str:
     """Save a matplotlib figure to disk."""
+    if path is None:
+        path = os.path.join(tempfile.gettempdir(), "chart.png")
     try:
         plt.savefig(path, dpi=150, bbox_inches=bbox)
         plt.close(fig)

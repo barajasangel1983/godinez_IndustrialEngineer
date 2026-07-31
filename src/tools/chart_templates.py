@@ -8,6 +8,9 @@ Provides standardized chart templates:
 - Forecast overlay chart
 """
 
+import os
+import tempfile
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -20,6 +23,11 @@ from .chart_palette import (
     PALETTE, apply_style, save_chart,
     add_threshold_line, format_percent,
 )
+
+
+def _chart_path(filename: str) -> str:
+    """Build a cross-platform temp-dir path for a generated chart image."""
+    return os.path.join(tempfile.gettempdir(), filename)
 
 
 def create_oee_trend_chart(
@@ -131,7 +139,7 @@ def create_oee_trend_chart(
             )
 
         plt.tight_layout()
-        return save_chart(fig, "/tmp/oee_trend_chart.png")
+        return save_chart(fig, _chart_path("oee_trend_chart.png"))
 
     except Exception as e:
         print(f"❌ OEE trend chart generation failed: {e}")
@@ -208,7 +216,7 @@ def create_pareto_chart(
                 bbox=dict(boxstyle="round", facecolor=PALETTE["bar_secondary"], alpha=0.7))
 
         plt.tight_layout()
-        return save_chart(fig, "/tmp/pareto_chart.png")
+        return save_chart(fig, _chart_path("pareto_chart.png"))
 
     except Exception as e:
         print(f"❌ Pareto chart generation failed: {e}")
@@ -284,7 +292,7 @@ def create_control_chart(
                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
 
         plt.tight_layout()
-        return save_chart(fig, "/tmp/control_chart.png")
+        return save_chart(fig, _chart_path("control_chart.png"))
 
     except Exception as e:
         print(f"❌ Control chart generation failed: {e}")
@@ -351,7 +359,7 @@ def create_forecast_chart(
                        fontsize=10, color="red", fontweight="bold")
 
         plt.tight_layout()
-        return save_chart(fig, "/tmp/forecast_chart.png")
+        return save_chart(fig, _chart_path("forecast_chart.png"))
 
     except Exception as e:
         print(f"❌ Forecast chart generation failed: {e}")
@@ -401,7 +409,7 @@ def create_trend_line_chart(
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
 
         plt.tight_layout()
-        return save_chart(fig, "/tmp/trend_line_chart.png")
+        return save_chart(fig, _chart_path("trend_line_chart.png"))
 
     except Exception as e:
         print(f"❌ Trend line chart generation failed: {e}")
