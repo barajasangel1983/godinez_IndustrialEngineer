@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 1.3.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
+> Version 1.4.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
 
 ---
 
@@ -754,6 +754,17 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] `GET /api/persistence/status` — check persistence configuration
 - [x] `GET /health` — health check with version + tracing status
 
+#### Step 6.4: Comprehensive Tests ✅
+- [x] `tests/test_comprehensive.py` — 60 tests filling production-critical gaps
+- [x] **Unit — OEE Calculator edge cases** (10 tests): zero planned time, good_count > total, actual_run > planned, negative downtime, 10 000-record aggregation, single-record average, empty average, rating boundary, recommendation present, zero ideal cycle time
+- [x] **Unit — CSV Reader edge cases** (8 tests): file not found, missing required column, all malformed rows raise, malformed rows skipped, headers-only raises, multiple machines extracted, date range correct, 1 000-row parse
+- [x] **Unit — Bottleneck Detector edge cases** (6 tests): all-zero cycle times, zero planned time, many stations finds highest CT, identical cycle times → low severity, missing columns default to zero, 500-record large dataset
+- [x] **Unit — Cost Estimator edge cases** (7 tests): zero production, zero downtime, perfect quality zero scrap, custom cost params, large dataset sums correctly, pareto ordering, ROI projection exists
+- [x] **Integration — Full API chain** (5 tests): upload→list shows file, upload→delete removes file, query→results with in-memory persistence, query response has required fields, results without persistence returns empty
+- [x] **Integration — Multi-intent routing** (7 tests): OEE/bottleneck/cost/trend/safety keyword routing, unknown query low confidence, full workflow E2E with mocked classify
+- [x] **Integration — Error recovery** (8 tests): LLM unavailable → 500 not crash, workflow invoke exception → 500, invalid CSV upload → 400 not 500, health always responds, missing query → 422, query too long → 422, nonexistent session, persistence failure non-fatal
+- [x] **Security** (9 tests): SQL injection in session_id, SQL injection in query body (echoed safely), XSS in query not executed, path traversal in DELETE (%2F), path traversal (backslash), subpath blocked, 50 MB limit enforced, empty upload rejected, non-CSV extension rejected
+
 #### Step 6.5: Configuration Management ✅
 - [x] `src/config/` package replaces flat `src/config.py` (all existing imports unchanged)
 - [x] `src/config/loader.py` — frozen `Config` dataclass with six typed sections: `database`, `llm`, `oee`, `bottleneck`, `cost`, `graph`
@@ -768,7 +779,7 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] `tests/test_config.py` — 40 tests: defaults, JSON overrides, CONFIG_FILE env var, individual env vars, validation errors, frozen immutability, backward-compat imports
 
 #### Other ✅
-- [x] Comprehensive test suite: 237 tests (237 passing)
+- [x] Comprehensive test suite: 297 tests (297 passing)
 - [x] README: setup guide, usage examples, configuration reference, architecture diagram
 - [x] Sample production data for demo
 - [x] Code review + cleanup:
@@ -870,7 +881,8 @@ godinez-industrial-engineer/
 │   ├── test_persistence.py      # 26 tests (models, config, repositories, pipeline)
 │   ├── test_cli.py              # 35 tests (parser, all 5 commands, config overrides)
 │   ├── test_data_api.py         # 21 tests (upload, list, delete, validation, path traversal)
-│   └── test_config.py           # 40 tests (defaults, JSON/env overrides, validation, backward compat)
+│   ├── test_config.py           # 40 tests (defaults, JSON/env overrides, validation, backward compat)
+│   └── test_comprehensive.py    # 60 tests (OEE/CSV/bottleneck/cost edge cases, integration chain, security)
 ├── main.py                      # Root CLI entry point (thin wrapper → src.cli.main.main)
 ├── .env.example                 # All configurable env vars with safe defaults (committed)
 ├── .godinez_config.json         # Runtime config (DB URL, thresholds — not committed)
