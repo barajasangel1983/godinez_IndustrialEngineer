@@ -101,15 +101,13 @@ class GodinezState(MessagesState):
     human_review: bool = False          # Flag for low-confidence classifications
 
     # ── Analysis Results ───────────────────────────────────
-    # Each phase adds its result type here.
-    # Phase 1: oee_analysis: Optional[dict]
-    # Phase 3: trend_analysis: Optional[dict]
-    # Phase 4: bottleneck_result: Optional[BottleneckResult], cost_result: Optional[CostResult]
+    analysis_results: dict = {}         # Merged output from all analysis nodes
 
     # ── Output ─────────────────────────────────────────────
     response: Optional[str] = None      # Final text response
     report: Optional[str] = None        # Markdown report content
     attachments: Optional[List[str]] = None  # File paths (charts, PDFs, etc.)
+    charts: Optional[list] = None       # Embedded chart data returned to the API
 
     # ── Errors & Metadata ─────────────────────────────────
     errors: List[str] = []              # Accumulated errors during execution

@@ -56,9 +56,10 @@ def _get_llm_primary() -> ChatOpenAI:
 
 def _get_llm_ollama() -> ChatOllama:
     """Local Ollama fallback: qwen3:8b."""
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     return ChatOllama(
         model="qwen3:8b",
-        base_url="http://localhost:11434",
+        base_url=ollama_url,
         temperature=0.0,
         num_ctx=4096,
         request_timeout=5,  # 5 second timeout

@@ -827,6 +827,7 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] `config set` positional syntax — changed from `--set KEY VALUE` flag to `config set KEY VALUE` positional (matches spec)
 - [x] `config set database.url` validation — was `postgresql://` only, now accepts any URL (`sqlite:///`, `postgresql://`, `off`)
 - [x] `main.py` duplication — root `main.py` was a full copy of `src/cli/main.py` with a wrong `sys.path`; now a 10-line thin wrapper
+- [x] `GodinezState` missing fields — `analysis_results: dict = {}` and `charts: Optional[list] = None` were written by nodes but not declared in the TypedDict schema; added both fields and removed stale comments referencing non-existent per-phase fields (`oee_analysis`, `trend_analysis`, `bottleneck_result`, `cost_result`)
 
 ---
 
@@ -924,7 +925,7 @@ godinez-industrial-engineer/
 └── .gitignore
 ```
 
-**Commit state (as of 2026-07-31, last commit = `bfb91bf`):** All Phase 6 files committed.
+**Commit state (as of 2026-07-31, last commit = `a64b65e`):** All Phase 6 files committed. `src/graph/state.py` updated (GodinezState schema fix, not yet committed).
 
 **Planned Phase 5 additions (not started):**
 - `src/tools/knowledge/osha_rag.py` — OSHA RAG tool

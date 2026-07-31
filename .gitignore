@@ -14,3 +14,4 @@ data/sample_*.csv
 .idea/
 .vscode/
 *.log
+.godinez_config.json
