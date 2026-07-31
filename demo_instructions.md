@@ -1,7 +1,8 @@
 # Godínez IndustrialEngineer — Demo Instructions
 
 > **Audience:** Personal reference  
-> **LLM:** Ollama (`qwen3:8b`) — no OpenAI key required  
+> **LLM fallback chain:** Qwen3.6-35B-A3B via vLLM on the DGX Spark (primary) → Ollama `qwen3:8b` (local fallback) → keyword matching (final fallback). No OpenAI key required.  
+> **DGX reachability:** the classify node hits `DGX_VLLM_URL` directly (default `http://100.74.225.3:8001/v1`) — on a VPS this only works if Tailscale is up and connected to the DGX Spark's tailnet.  
 > **Sections with OS differences:** Linux and Windows (PowerShell) blocks shown separately  
 > **Docker sections:** identical on both platforms
 
@@ -13,15 +14,33 @@
 |---|---|---|
 | Python | 3.13+ | `python --version` / `python3 --version` |
 | Docker | 24+ | Includes Compose v2 (`docker compose`) |
-| Ollama | 0.3+ | Must be running before starting the app |
+| Ollama | 0.3+ | Optional — local fallback only, not required if DGX is reachable |
+| Tailscale | any | Required on the VPS if you want the container to reach the DGX Spark's `Qwen/Qwen3.6-35B-A3B` vLLM endpoint |
 | Git | any | |
 
 ---
 
-## 2. Ollama Setup
+## 2. LLM Backend Setup
 
-The classify node falls back to Ollama automatically when DGX is unreachable.  
-Pull the required model once:
+### 2a. DGX (primary, via Tailscale)
+
+The classify node's first attempt is always the DGX vLLM endpoint (`DGX_VLLM_URL`,
+default `http://100.74.225.3:8001/v1`, serving `Qwen/Qwen3.6-35B-A3B`).
+
+Confirm the VPS can reach it before running anything:
+```bash
+tailscale status   # DGX Spark node should show as connected
+curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8001/v1/models
+# Expected: 200
+```
+
+A Docker container reaches this fine over the default bridge network — no
+`--network=host` needed, since outbound traffic is NATed through the host,
+which routes `100.x` addresses via `tailscale0`.
+
+### 2b. Ollama (local fallback)
+
+Used automatically when DGX is unreachable. Pull the required model once:
 
 ```bash
 ollama pull qwen3:8b
@@ -33,6 +52,10 @@ Verify Ollama is listening:
 # Expected: HTTP/1.1 200 OK
 curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags
 ```
+
+If neither DGX nor Ollama is reachable, classification falls through to
+keyword matching — analysis still works, just with lower-confidence intent
+detection.
 
 ---
 
@@ -221,9 +244,13 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 ---
 
-## 7. Build & Run — Single Container (SQLite)
+## 7. Build & Run — Single Container (No DB)
 
-No Compose, no Postgres. Simplest container demo.
+No Compose, no Postgres. Simplest container demo. `DATABASE_URL=off` in `.env`
+skips persistence entirely — results aren't saved across restarts, but the
+CLI/API analysis flow works. Sample CSVs (`sample_production.csv`,
+`synthetic_production.csv`) are baked into the image at build time (see
+`Dockerfile`), so no upload step or volume mount is needed for this demo.
 
 ### Build
 ```bash
@@ -235,26 +262,42 @@ docker build -t godinez:latest .
 docker run -d \
   --name godinez-demo \
   -p 8000:8000 \
-  -e DATABASE_URL=sqlite:///data/godinez.db \
-  -e OPENAI_API_KEY="" \
+  --env-file .env \
   godinez:latest
 ```
 
-> Ollama on the host is not reachable from inside the container by default.  
-> The classify node will fall through to **keyword matching** — analysis still works.
+> Uses `--env-file .env` so the container picks up `DATABASE_URL=off` (no DB required)
+> and `DGX_VLLM_URL` (Qwen3.6-35B-A3B via vLLM on the DGX Spark, reached over Tailscale).
+> On a VPS with Tailscale connected to the DGX, this works over the default Docker bridge
+> network — no `--network=host` needed, since outbound container traffic is NATed through
+> the host, which routes `100.x` addresses via `tailscale0`.
+>
+> If the DGX/Tailscale link is unreachable, the classify node falls back to local Ollama
+> (`OLLAMA_BASE_URL`), then to **keyword matching** — analysis still works either way.
 
 ### Verify
+
+```bash
+docker ps
+```
+You should see:
+```
+CONTAINER ID   IMAGE              COMMAND                  CREATED              STATUS              PORTS                                       NAMES
+ddd7684a944d   godinez:latest     "./scripts/start.sh"     About a minute ago   Up About a minute   0.0.0.0:8000->8000/tcp, :::8000->8000/tcp   godinez-demo
+```
 
 ```bash
 # Wait ~5 seconds for startup, then:
 curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health
 # Expected: 200
 
-curl -s -o /dev/null -w "%{http_code}" \
-  -X POST http://localhost:8000/api/query \
+curl -s -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "Show me OEE", "user_id": "container-test"}'
-# Expected: 200
+# Expected: 200 with a full OEE report in "response"
+#   (metadata.classify_method: "primary" if DGX answered, "ollama" or
+#   "keyword_fallback" otherwise). First DGX call can take 30-150s —
+#   the vLLM endpoint is slow to respond to a cold request.
 ```
 
 ### Container logs
@@ -393,3 +436,5 @@ deactivate
 | Tear down + wipe | `docker compose down -v` |
 | Check Ollama model | `ollama list` |
 | Pull Ollama model | `ollama pull qwen3:8b` |
+| Check Tailscale link to DGX | `tailscale status` |
+| Check DGX vLLM endpoint | `curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8001/v1/models` |

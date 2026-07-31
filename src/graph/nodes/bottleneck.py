@@ -205,7 +205,7 @@ def bottleneck_node(state: GodinezState) -> GodinezState:
                     "constraint_info": constraint_info,
                 },
             },
-            "errors": errors if errors else None,
+            "errors": errors,
             "metadata": {
                 **state.get("metadata", {}),
                 "bottleneck_analysis": True,

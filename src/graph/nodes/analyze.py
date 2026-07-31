@@ -79,7 +79,7 @@ def analyze_node(state: GodinezState) -> GodinezState:
         **state,
         "response": response,
         "analysis_results": analysis_results,
-        "errors": errors if errors else None,
+        "errors": errors,
         "metadata": {
             **state.get("metadata", {}),
             **handler_metadata,  # Merge handler metadata

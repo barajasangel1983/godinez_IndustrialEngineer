@@ -102,7 +102,7 @@ def cost_node(state: GodinezState) -> GodinezState:
                     "data_points": analysis.data_points,
                 },
             },
-            "errors": errors if errors else None,
+            "errors": errors,
             "metadata": {
                 **state.get("metadata", {}),
                 "cost_analysis": True,

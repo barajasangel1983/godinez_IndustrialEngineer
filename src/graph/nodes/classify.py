@@ -161,7 +161,7 @@ def classify_node(state: GodinezState) -> GodinezState:
         "confidence": result.confidence,
         "entities": result.entities,
         "human_review": result.confidence < LOW_CONFIDENCE_THRESHOLD,
-        "errors": errors if errors else None,
+        "errors": errors,
         "metadata": {
             **state.get("metadata", {}),
             "classify_method": llm_used,

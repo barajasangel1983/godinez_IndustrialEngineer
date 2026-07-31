@@ -45,8 +45,10 @@ COPY main.py    ./main.py
 COPY scripts/   ./scripts/
 
 # Writable data directory (mounted as a volume in production)
-RUN mkdir -p data && \
-    chmod +x scripts/start.sh && \
+# Sample CSVs baked in so the container has demo data without a volume mount or upload step.
+RUN mkdir -p data
+COPY data/*.csv ./data/
+RUN chmod +x scripts/start.sh && \
     chown -R godinez:godinez /app
 
 USER godinez
