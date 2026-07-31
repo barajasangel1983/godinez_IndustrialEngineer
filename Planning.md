@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 1.5.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
+> Version 1.6.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
 
 ---
 
@@ -764,6 +764,19 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] **Integration — Multi-intent routing** (7 tests): OEE/bottleneck/cost/trend/safety keyword routing, unknown query low confidence, full workflow E2E with mocked classify
 - [x] **Integration — Error recovery** (8 tests): LLM unavailable → 500 not crash, workflow invoke exception → 500, invalid CSV upload → 400 not 500, health always responds, missing query → 422, query too long → 422, nonexistent session, persistence failure non-fatal
 - [x] **Security** (9 tests): SQL injection in session_id, SQL injection in query body (echoed safely), XSS in query not executed, path traversal in DELETE (%2F), path traversal (backslash), subpath blocked, 50 MB limit enforced, empty upload rejected, non-CSV extension rejected
+
+#### Step 6.7: Documentation ✅
+- [x] `README.md` fully rewritten (~300 lines) with:
+  - Quick Start (6-line clone → first query)
+  - Architecture: ASCII graph pipeline diagram + data flow diagram + source layout table
+  - Setup Guide: venv, install, configure, optional persistence, verify
+  - CLI usage: all 5 subcommands with copy-paste examples and expected output
+  - REST API usage: server start, curl examples for query + data upload
+  - Docker usage: single-container (SQLite) and full-stack (PostgreSQL + app) commands
+  - Configuration Reference: all 18 env vars in grouped tables with defaults and descriptions; `.godinez_config.json` schema example
+  - API Reference: all 7 endpoints with request/response JSON, status codes, curl examples
+  - Troubleshooting: 7 common errors with root cause and fix
+  - Contributing: how to add a new analysis node (5-step guide with code), test commands, code style, project conventions
 
 #### Step 6.6: Production Deployment ✅
 - [x] `Dockerfile` — multi-stage build (builder: gcc + libpq-dev + pip install; production: libpq5 runtime only, non-root `godinez` user, `EXPOSE 8000`)
