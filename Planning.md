@@ -1,6 +1,6 @@
 # Godínez IndustrialEngineer — Implementation Plan
 
-> Version 1.2.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
+> Version 1.3.0 | Created 2026-07-27 | Last Updated 2026-07-31 | Status: Phase 6 Complete ✅ | Phase 5 (Safety Audit): Not Started ⏳
 
 ---
 
@@ -754,8 +754,21 @@ CLI: python main.py analyze "query" --session <id> --trace
 - [x] `GET /api/persistence/status` — check persistence configuration
 - [x] `GET /health` — health check with version + tracing status
 
+#### Step 6.5: Configuration Management ✅
+- [x] `src/config/` package replaces flat `src/config.py` (all existing imports unchanged)
+- [x] `src/config/loader.py` — frozen `Config` dataclass with six typed sections: `database`, `llm`, `oee`, `bottleneck`, `cost`, `graph`
+- [x] `Config.load()` classmethod — load order: defaults → `.godinez_config.json` → `CONFIG_FILE` env var → individual env vars
+- [x] `Config.load(_config_path=...)` — optional override for testing (no monkeypatching of module paths needed)
+- [x] Validation at load time with clear errors: temperature (0–2), OEE thresholds (strictly ascending), graph iterations/timeout (>= 1)
+- [x] `src/config/__init__.py` — exports `Config`, `config` (loaded instance), path constants, and backward-compat flat names (`LLM_MODEL`, `OEE_THRESHOLDS`, `MAX_ITERATIONS`, `GRAPH_TIMEOUT`)
+- [x] `_CONFIG_FILE` / `_load_json_config()` preserved for test_cli.py backward compat
+- [x] `src/tools/analysis/bottleneck_detector.py` — `SEVERITY_THRESHOLDS` class variable now reads from `config.bottleneck`
+- [x] `src/tools/analysis/cost_estimator.py` — `DEFAULT_COSTS` class variable now reads from `config.cost`
+- [x] `.env.example` — all configurable env vars with documentation and safe defaults
+- [x] `tests/test_config.py` — 40 tests: defaults, JSON overrides, CONFIG_FILE env var, individual env vars, validation errors, frozen immutability, backward-compat imports
+
 #### Other ✅
-- [x] Comprehensive test suite: 197 tests (197 passing)
+- [x] Comprehensive test suite: 237 tests (237 passing)
 - [x] README: setup guide, usage examples, configuration reference, architecture diagram
 - [x] Sample production data for demo
 - [x] Code review + cleanup:

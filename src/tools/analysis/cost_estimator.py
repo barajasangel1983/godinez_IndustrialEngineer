@@ -7,6 +7,8 @@ Phase 4: Scrap, rework, and downtime cost analysis with Pareto ranking.
 from dataclasses import dataclass, field
 from typing import Optional
 
+from src.config import config as _cfg
+
 
 @dataclass
 class CostBreakdown:
@@ -49,12 +51,12 @@ class CostResult:
 class CostEstimator:
     """Estimate costs of scrap, rework, and downtime."""
 
-    # Default cost parameters (can be overridden via config)
+    # Default cost parameters — loaded from config at startup
     DEFAULT_COSTS = {
-        "scrap_per_unit": 25.00,    # $ per scrapped unit
-        "rework_per_hour": 45.00,   # $ per rework hour
-        "downtime_per_hour": 150.00, # $ per hour of downtime
-        "defect_per_unit": 5.00,    # $ per defect (quality loss)
+        "scrap_per_unit": _cfg.cost.scrap_per_unit,
+        "rework_per_hour": _cfg.cost.rework_per_hour,
+        "downtime_per_hour": _cfg.cost.downtime_per_hour,
+        "defect_per_unit": _cfg.cost.defect_per_unit,
     }
 
     @classmethod

@@ -7,6 +7,8 @@ Phase 4: Determines the constraint station using Theory of Constraints principle
 from dataclasses import dataclass, field
 from typing import Optional
 
+from src.config import config as _cfg
+
 
 @dataclass
 class BottleneckResult:
@@ -39,11 +41,11 @@ class BottleneckResult:
 class BottleneckDetector:
     """Detect production bottlenecks using cycle time and utilization analysis."""
 
-    # Severity thresholds for balance delay (%)
+    # Severity thresholds for balance delay (%) — loaded from config at startup
     SEVERITY_THRESHOLDS = {
-        "critical": 30,
-        "high": 20,
-        "medium": 10,
+        "critical": _cfg.bottleneck.severity_critical,
+        "high": _cfg.bottleneck.severity_high,
+        "medium": _cfg.bottleneck.severity_medium,
         "low": 0,
     }
 
