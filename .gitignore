@@ -9,7 +9,6 @@ dist/
 build/
 *.db
 *.sqlite3
-data/sample_*.csv
 .ipynb_checkpoints/
 .idea/
 .vscode/
