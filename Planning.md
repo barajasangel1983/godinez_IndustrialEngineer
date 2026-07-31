@@ -846,8 +846,11 @@ godinez-industrial-engineer/
 │   │   ├── config.py            # DATABASE_URL config, engine, session factory
 │   │   └── repositories.py      # QueryRepo, SessionRepo, ResultRepo
 │   ├── api/
-│   │   └── app.py               # FastAPI REST API (4 routes)
-│   └── config.py
+│   │   ├── app.py               # FastAPI REST API (POST/GET /api/query, GET /api/results, GET /health)
+│   │   └── data_routes.py       # Data upload router (POST/GET/DELETE /api/data)
+│   └── config/                  # Configuration package (Step 6.5)
+│       ├── __init__.py          # Exports Config, config instance, backward-compat flat names
+│       └── loader.py            # Frozen Config dataclass + Config.load() with validation
 ├── data/
 │   ├── sample_production.csv    # Demo data (84 shifts)
 │   ├── synthetic_production.csv # Synthetic data for testing
@@ -866,19 +869,19 @@ godinez-industrial-engineer/
 │   ├── test_phase4.py           # 25 tests (bottleneck + cost + state models)
 │   ├── test_persistence.py      # 26 tests (models, config, repositories, pipeline)
 │   ├── test_cli.py              # 35 tests (parser, all 5 commands, config overrides)
-│   └── test_data_api.py         # 21 tests (upload, list, delete, validation, path traversal)
-├── main.py                      # Root CLI entry point (argparse dispatcher → src.cli.commands)
+│   ├── test_data_api.py         # 21 tests (upload, list, delete, validation, path traversal)
+│   └── test_config.py           # 40 tests (defaults, JSON/env overrides, validation, backward compat)
+├── main.py                      # Root CLI entry point (thin wrapper → src.cli.main.main)
+├── .env.example                 # All configurable env vars with safe defaults (committed)
 ├── .godinez_config.json         # Runtime config (DB URL, thresholds — not committed)
+├── alembic.ini                  # Alembic configuration
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
 └── .gitignore
 ```
 
-**Note on commit state (as of 2026-07-31):**
-The following are present on disk but **untracked / uncommitted** (last commit = Phase 4):
-`alembic/`, `alembic.ini`, `src/cli/`, `src/persistence/`, `.godinez_config.json`, `main.py.bak`
-Modified but unstaged: `main.py`, `requirements.txt`, `src/api/app.py`, `src/graph/nodes/cost_analysis.py`, `src/tools/csv_reader.py`, `tests/test_observability.py`
+**Commit state (as of 2026-07-31, last commit = `bfb91bf`):** All Phase 6 files committed.
 
 **Planned Phase 5 additions (not started):**
 - `src/tools/knowledge/osha_rag.py` — OSHA RAG tool
