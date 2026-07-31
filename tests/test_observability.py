@@ -234,15 +234,24 @@ class TestWorkflowIntegration:
         assert "tracer" in obs_context
         assert "metrics" in obs_context
 
-    def test_main_run_query_returns_metrics(self):
-        """Main run_query should return execution summary."""
-        from main import run_query
+    def test_workflow_returns_metrics(self):
+        """Build and invoke workflow should capture execution metrics."""
+        from src.graph import build_workflow
 
-        result = run_query("What's our OEE today?", session_id="test-123")
-        
+        workflow, obs_context = build_workflow(session_id="test-123")
+
+        assert "tracer" in obs_context
+        assert "metrics" in obs_context
+
+        # Invoke the workflow with a simple query
+        compiled = workflow.compile()
+        result = compiled.invoke({"query": "What's our OEE?", "messages": []})
+
+        # Metrics should be captured
+        summary = obs_context["metrics"].get_summary()
+        assert "execution_order" in summary
+        assert len(summary["execution_order"]) > 0
         assert "response" in result
-        assert "execution_summary" in result
-        assert "execution_order" in result["execution_summary"]
 
 
 # ── Test Tracing Module ────────────────────────────────────

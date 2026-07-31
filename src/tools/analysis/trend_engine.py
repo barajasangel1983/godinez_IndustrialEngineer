@@ -342,13 +342,12 @@ class TrendEngine:
             std = np.std(window)
 
             if std == 0:
-                # If all values in window are identical and current differs, it's an anomaly
                 if values_array[i] != mean:
-                    z_score = 999.0  # Treat as extreme anomaly
+                    z_score = 999.0
                 else:
                     continue
-
-            z_score = abs(values_array[i] - mean) / std
+            else:
+                z_score = abs(values_array[i] - mean) / std
 
             if z_score > z_threshold:
                 deviation = z_score

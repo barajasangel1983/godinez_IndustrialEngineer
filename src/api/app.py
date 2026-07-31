@@ -3,17 +3,20 @@ Godínez IndustrialEngineer — FastAPI REST API
 
 Phase 2: Provides HTTP endpoints for the same workflow logic
 as the CLI entry point.
+Phase 6.0: PostgreSQL persistence layer with results history.
 
 Usage:
     uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 
 Endpoints:
-    POST /api/query  — Run analysis on a natural language query
-    GET  /health     — Health check
+    POST /api/query           — Run analysis on a natural language query
+    GET  /api/results/{sid}   — Retrieve all queries for a session
+    GET  /health              — Health check
 """
 
 import os
 import uuid
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -26,11 +29,28 @@ load_dotenv()
 
 from src.graph import build_workflow
 
+# ── Persistence (optional, enabled via DATABASE_URL env var) ────
+from src.persistence import init_db, is_persistence_available
+from src.persistence.repositories import persist_query_result, get_session_summary
+from src.persistence.config import get_db_session, get_url
+from src.persistence.models import Session, Query, AnalysisResult
+
+# ── Lifespan: Initialize Database ────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        init_db()
+    except Exception as e:
+        print(f"⚠️ Persistence init failed (database may not be configured): {e}")
+    yield
+
+
 # ── FastAPI App ──────────────────────────────────────────────
 app = FastAPI(
     title="Godínez IndustrialEngineer",
     description="AI-powered manufacturing analysis agent — REST API",
     version="0.6.0",
+    lifespan=lifespan,
 )
 
 # CORS (allow browser/frontend access)
@@ -95,6 +115,39 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     tracing_enabled: bool
+
+
+class ResultItem(BaseModel):
+    """A single query result within a session."""
+
+    query_id: int
+    query_text: str
+    intent: Optional[str] = None
+    confidence: Optional[float] = None
+    timestamp: Optional[str] = None
+    response: Optional[str] = None
+    metadata: Optional[dict] = None
+    charts: Optional[list] = None
+    errors: Optional[list] = None
+    session_id: str
+
+
+class SessionSummary(BaseModel):
+    """Summary of a session's queries."""
+
+    session_id: str
+    query_count: int
+    intents: list[str]
+    first_query: Optional[str] = None
+    last_query: Optional[str] = None
+    queries: list[ResultItem]
+
+
+class PersistenceStatus(BaseModel):
+    """Status of the persistence layer."""
+
+    enabled: bool
+    database_type: Optional[str] = None
 
 
 # ── Core Logic ───────────────────────────────────────────────
@@ -169,6 +222,9 @@ def health_check():
     )
 
 
+# ── POST /api/query with Persistence ─────────────────────────────
+
+
 @app.post(
     "/api/query",
     response_model=QueryResponse,
@@ -182,18 +238,155 @@ def query_api(request: QueryRequest):
     Same logic as `python main.py "query"` — the workflow runs
     intake → classify → router → analyze → response.
 
+    After completion, the result is persisted to the database
+    if persistence is configured (DATABASE_URL env var).
+
     Returns JSON with the response text, detected intent, metadata,
     and execution summary.
     """
     # Generate or accept session ID
     session_id = request.session_id or str(uuid.uuid4())
 
-    return _run_query(
+    # Run the workflow
+    response = _run_query(
         query=request.query,
         session_id=session_id,
         user_id=request.user_id,
         enable_tracing=request.enable_tracing,
     )
+
+    # Persist the result if persistence is available
+    if is_persistence_available():
+        try:
+            persist_query_result(
+                session_id=session_id,
+                query_text=request.query,
+                user_id=request.user_id,
+                intent=response.intent,
+                confidence=response.metadata.get("classification_confidence"),
+                response=response.response,
+                metadata={
+                    k: v for k, v in response.metadata.items()
+                    if k != "classification_confidence"
+                },
+                charts=response.charts,
+                errors=[],
+            )
+        except Exception as e:
+            # Non-fatal — don't break the API if persistence fails
+            print(f"⚠️ Persistence save failed (result still served): {e}")
+
+    return response
+
+
+# ── GET /api/results/{session_id} ──────────────────────────────
+
+
+@app.get(
+    "/api/results/{session_id}",
+    response_model=SessionSummary,
+    responses={404: {"model": ErrorResponse}},
+    tags=["Results"],
+)
+def get_results(session_id: str):
+    """
+    Retrieve all queries and results for a session.
+
+    Returns queries sorted by timestamp (most recent first),
+    each with its intent, response, and metadata.
+    """
+    if not is_persistence_available():
+        return {
+            "session_id": session_id,
+            "query_count": 0,
+            "intents": [],
+            "first_query": None,
+            "last_query": None,
+            "queries": [],
+        }
+
+    try:
+        from sqlalchemy import desc
+
+        db_session = get_db_session()
+        if db_session is None:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+
+        # Get all queries for this session
+        queries = (
+            db_session.query(Query)
+            .filter_by(session_id=session_id)
+            .order_by(desc(Query.timestamp))
+            .all()
+        )
+
+        # Get summary (decorator handles session injection)
+        summary = get_session_summary(session_id)
+        summary_data = summary
+
+        db_session.close()
+
+        # Map queries to ResultItem format
+        result_items = [
+            ResultItem(
+                query_id=q.id,
+                query_text=q.query_text,
+                intent=q.intent,
+                confidence=q.confidence / 100 if q.confidence else None,
+                timestamp=q.timestamp.isoformat() if q.timestamp else None,
+                session_id=q.session_id,
+                response=q.result.response if q.result else None,
+                metadata=q.result.analysis_metadata if q.result else None,
+                charts=q.result.charts if q.result else None,
+                errors=q.result.errors if q.result else None,
+            )
+            for q in queries
+        ]
+
+        return SessionSummary(
+            session_id=session_id,
+            query_count=summary_data["query_count"],
+            intents=summary_data["intents"],
+            first_query=summary_data["first_query"],
+            last_query=summary_data["last_query"],
+            queries=result_items,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": str(e), "detail": "Failed to fetch results"},
+        )
+
+
+# ── GET /api/persistence/status ────────────────────────────────
+
+
+@app.get(
+    "/api/persistence/status",
+    response_model=PersistenceStatus,
+    tags=["System"],
+)
+def persistence_status():
+    """Check if the persistence layer is configured and available."""
+    url = _get_db_url()
+    enabled = url != "off"
+    db_type = "sqlite" if url.startswith("sqlite") else url.split(":")[0] if ":" in url else "unknown"
+
+    return PersistenceStatus(
+        enabled=enabled,
+        database_type=db_type,
+    )
+
+
+# ── Helper functions ───────────────────────────────────────────
+
+
+def _get_db_url():
+    """Get the current database URL."""
+    return get_url()
 
 
 # ── Standalone Run ───────────────────────────────────────────

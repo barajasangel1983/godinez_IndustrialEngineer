@@ -96,3 +96,29 @@ def filter_by_machine(rows: list[dict], machine_id: str) -> list[dict]:
         row for row in rows
         if row["machine_id"] == machine_id
     ]
+
+
+class CsvReader:
+    """Object-oriented wrapper around csv_reader functions for backwards compat."""
+
+    def __init__(self):
+        pass
+
+    def read_csv(self, filepath: str) -> list[dict]:
+        return read_production_csv(filepath)
+
+    @staticmethod
+    def get_machine_ids(rows: list[dict]) -> list[str]:
+        return get_machine_ids(rows)
+
+    @staticmethod
+    def get_date_range(rows: list[dict]) -> tuple[str, str]:
+        return get_date_range(rows)
+
+    @staticmethod
+    def filter_by_date(rows: list[dict], start: str, end: str) -> list[dict]:
+        return filter_by_date(rows, start, end)
+
+    @staticmethod
+    def filter_by_machine(rows: list[dict], machine_id: str) -> list[dict]:
+        return filter_by_machine(rows, machine_id)
