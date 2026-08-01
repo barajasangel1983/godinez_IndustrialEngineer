@@ -1,8 +1,8 @@
 # Godínez IndustrialEngineer — Demo Instructions
 
 > **Audience:** Personal reference  
-> **LLM fallback chain:** Qwen3.6-35B-A3B via vLLM on the DGX Spark (primary) → Ollama `qwen3:8b` (local fallback) → keyword matching (final fallback). No OpenAI key required.  
-> **DGX reachability:** the classify node hits `DGX_VLLM_URL` directly (default `http://100.74.225.3:8001/v1`) — on a VPS this only works if Tailscale is up and connected to the DGX Spark's tailnet.  
+> **LLM fallback chain:** NVIDIA-Nemotron-Nano-9B-v2 via vLLM on the DGX Spark (primary) → Ollama `qwen3:8b` (local fallback) → keyword matching (final fallback). No OpenAI key required.  
+> **DGX reachability:** the classify node hits `DGX_VLLM_URL` directly (default `http://100.74.225.3:8003/v1`) — on a VPS this only works if Tailscale is up and connected to the DGX Spark's tailnet.  
 > **Sections with OS differences:** Linux and Windows (PowerShell) blocks shown separately  
 > **Docker sections:** identical on both platforms
 
@@ -15,7 +15,7 @@
 | Python | 3.13+ | `python --version` / `python3 --version` |
 | Docker | 24+ | Includes Compose v2 (`docker compose`) |
 | Ollama | 0.3+ | Optional — local fallback only, not required if DGX is reachable |
-| Tailscale | any | Required on the VPS if you want the container to reach the DGX Spark's `Qwen/Qwen3.6-35B-A3B` vLLM endpoint |
+| Tailscale | any | Required on the VPS if you want the container to reach the DGX Spark's `NVIDIA-Nemotron-Nano-9B-v2` vLLM endpoint |
 | Git | any | |
 
 ---
@@ -25,12 +25,12 @@
 ### 2a. DGX (primary, via Tailscale)
 
 The classify node's first attempt is always the DGX vLLM endpoint (`DGX_VLLM_URL`,
-default `http://100.74.225.3:8001/v1`, serving `Qwen/Qwen3.6-35B-A3B`).
+default `http://100.74.225.3:8003/v1`, serving `NVIDIA-Nemotron-Nano-9B-v2`).
 
 Confirm the VPS can reach it before running anything:
 ```bash
 tailscale status   # DGX Spark node should show as connected
-curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8001/v1/models
+curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8003/v1/models
 # Expected: 200
 ```
 
@@ -79,11 +79,26 @@ Changing one is a source edit + rebuild, not an API call.
 **To point at a different DGX / vLLM-served model:**
 
 1. Set `DGX_VLLM_URL` in `.env` to the new endpoint (if it's a different
-   host/port than the current one).
-2. Edit `_get_llm_primary()` (around line 50) — change
-   `model="Qwen/Qwen3.6-35B-A3B"` to whatever model ID that vLLM instance
-   serves (check with `curl <DGX_VLLM_URL>/models`).
+   host/port than the current one — e.g. the DGX now serves
+   `NVIDIA-Nemotron-Nano-9B-v2` on port `8003` instead of the old
+   `Qwen/Qwen3.6-35B-A3B` on `8001`).
+2. Edit `_get_llm_primary()` (around line 50) — change the `model=`
+   string to whatever model ID that vLLM instance serves (check with
+   `curl <DGX_VLLM_URL>/models`, or use exactly the `--served-model-name`
+   you passed when launching vLLM if you set one explicitly).
 3. Rebuild and restart as above.
+
+**Note on Nemotron-Nano's reasoning toggle:** this model defaults to
+extended "thinking" mode on, which is pure latency cost with no accuracy
+benefit for `classify_node`'s task (a shallow, deterministic 7-way label +
+entity extraction at `temperature=0.0`). It's disabled via a `/no_think`
+directive as the first line of the **system** message — this required
+restructuring `classify_node`'s LLM call from a single flattened prompt
+string into a proper `[("system", ...), ("human", ...)]` message pair
+(`_build_messages()` in `src/graph/nodes/classify.py`), since a system-role
+message didn't exist before. Confirmed effective: classify latency dropped
+from 28-44s to a consistent 6-9s. Applies to the Ollama fallback too
+(`qwen3:8b` uses the same Qwen3-style `/no_think` convention).
 
 **Note:** `LLM_MODEL` / `LLM_TEMPERATURE` in `.env` and
 `config --show` are defined in `src/config/` but are currently **not**
@@ -509,7 +524,7 @@ docker run -d \
 ```
 
 > Uses `--env-file .env` so the container picks up `DATABASE_URL=off` (no DB required)
-> and `DGX_VLLM_URL` (Qwen3.6-35B-A3B via vLLM on the DGX Spark, reached over Tailscale).
+> and `DGX_VLLM_URL` (NVIDIA-Nemotron-Nano-9B-v2 via vLLM on the DGX Spark, reached over Tailscale).
 > On a VPS with Tailscale connected to the DGX, this works over the default Docker bridge
 > network — no `--network=host` needed, since outbound container traffic is NATed through
 > the host, which routes `100.x` addresses via `tailscale0`.
@@ -682,4 +697,4 @@ deactivate
 | Check Ollama model | `ollama list` |
 | Pull Ollama model | `ollama pull qwen3:8b` |
 | Check Tailscale link to DGX | `tailscale status` |
-| Check DGX vLLM endpoint | `curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8001/v1/models` |
+| Check DGX vLLM endpoint | `curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8003/v1/models` |

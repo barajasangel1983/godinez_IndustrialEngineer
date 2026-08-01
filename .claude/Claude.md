@@ -392,6 +392,56 @@ Fixed by backing `session_datasets.py` with the DB instead of pure memory:
 
 Test count: 337 → 345 (343 passing, same 2 pre-existing tracing failures).
 
+### 6. Primary DGX model swap: Qwen3.6-35B-A3B → NVIDIA-Nemotron-Nano-9B-v2
+
+User discussed model choice for the DGX primary tier (goal: reduce the
+30-40s+ latency observed from the 35B model during earlier testing) and
+landed on NVIDIA-Nemotron-Nano-9B-v2 — smaller, hybrid Mamba-Transformer
+(Nemotron-H) architecture for better throughput per parameter, and has a
+reasoning on/off toggle relevant here since `classify_node`'s task
+(7-way intent label + shallow entity extraction, `temperature=0.0`) never
+needs "thinking" mode — reasoning should stay off for this use case
+(not yet wired up; depends on how the vLLM endpoint exposes it).
+
+Swapped `DGX_VLLM_URL` port 8001 → 8003 and the hardcoded `model=` string
+in `_get_llm_primary()` (`src/graph/nodes/classify.py`) across `.env`,
+`.env.example`, `classify.py` (4 spots: module docstring, function
+docstring, the `model=` kwarg, `classify_node`'s docstring), and
+`response.py`'s `_LLM_DISPLAY_NAMES["primary"]`.
+
+**Initial verification:** neither 8001 nor 8003 was reachable at first
+(checked directly with sandbox disabled and via `docker exec` into the
+running container) — likely the DGX-side vLLM service was between states
+(old one stopped, new one still starting). Once it came up, `/v1/models`
+revealed the served model ID is `nvidia/NVIDIA-Nemotron-Nano-9B-v2` (with
+the `nvidia/` prefix) — the bare name used in the first edit would have
+404'd every classify request; corrected in `_get_llm_primary()`.
+
+**First end-to-end test was a letdown:** 28–44s per classification, no
+better than the old 35B model. Root cause: Nemotron-Nano-9B-v2 defaults
+to extended "thinking" mode on, and the existing prompt was a single
+flattened string sent as one `HumanMessage` — there was no system-role
+message at all, so a `/no_think` directive had nowhere correct to live.
+
+**Fix:** restructured `classify_node`'s LLM call from
+`llm.invoke(single_formatted_string)` to a proper `[("system", ...),
+("human", ...)]` message pair via a new `_build_messages()` helper, with
+`/no_think` as the first line of the system prompt (Qwen3/Nemotron-style
+thinking-mode control token — applies to both the DGX primary and the
+Ollama `qwen3:8b` fallback, since Qwen3 uses the same convention).
+Result: classify latency dropped from 28-44s to a **consistent 6-9s**
+across three separate test queries — no fallback, no accuracy loss
+(`intent`/`classify_method` still correct in every test).
+
+**Separate bottleneck surfaced, not fixed:** a `trend`-intent query with
+the larger dataset took 74s total despite classify only taking 8s of
+that — the `response` node's matplotlib chart rendering (3 charts,
+`show_forecast=True`, 6 months of dates) accounted for the other 66s.
+This wasn't visible in earlier testing because the OEE trend chart was
+silently crashing before the `TrendResult` subscript fix (commit
+`8cc068e`) — now that it actually renders, its true cost shows up. Out of
+scope for this pass; flagged for later if chart latency matters.
+
 ## Commits
 
 ```

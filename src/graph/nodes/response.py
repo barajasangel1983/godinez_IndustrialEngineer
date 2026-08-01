@@ -51,7 +51,7 @@ def response_node(state: GodinezState) -> GodinezState:
 
 
 _LLM_DISPLAY_NAMES = {
-    "primary": "Qwen3.6-35B-A3B (DGX)",
+    "primary": "NVIDIA-Nemotron-Nano-9B-v2 (DGX)",
     "ollama": "qwen3:8b (Ollama fallback)",
     "keyword_fallback": "keyword matching (no LLM reachable)",
     "skipped_system_command": "n/a (system command)",

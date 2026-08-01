@@ -5,7 +5,7 @@ Phase 2: Replaces simple keyword matching with LLM-powered classification.
 Returns: intent, confidence, extracted_entities, human_review flag
 
 Fallback chain:
-  1. Qwen3.6-35B-A3B via vLLM on DGX
+  1. NVIDIA-Nemotron-Nano-9B-v2 via vLLM on DGX
   2. qwen3:8b via ollama on local machine (localhost:11434)
   3. Keyword matching fallback
 
@@ -44,10 +44,10 @@ class ClassificationResult:
 
 
 def _get_llm_primary() -> ChatOpenAI:
-    """Primary LLM: Qwen3.6-35B-A3B via vLLM on DGX."""
-    dgx_url = os.environ.get("DGX_VLLM_URL", "http://100.74.225.3:8001/v1")
+    """Primary LLM: NVIDIA-Nemotron-Nano-9B-v2 via vLLM on DGX."""
+    dgx_url = os.environ.get("DGX_VLLM_URL", "http://100.74.225.3:8003/v1")
     return ChatOpenAI(
-        model="Qwen/Qwen3.6-35B-A3B",
+        model="nvidia/NVIDIA-Nemotron-Nano-9B-v2",
         base_url=dgx_url,
         api_key="none",
         temperature=0.0,
@@ -68,10 +68,11 @@ def _get_llm_ollama() -> ChatOllama:
 
 
 SYSTEM_PROMPT = """\
-You are a manufacturing operations assistant classifier. Given a user query, identify the intent and extract relevant entities.
+/no_think
+You are an Agentic Industrial Engineer. Select the correct analysis tool and perform concise, structured classification of the user's query — no explanations, no markdown, no reasoning trace.
 
 Available intents: {intents}
-Respond in JSON format ONLY (no markdown, no explanations):
+Respond in JSON format ONLY:
 {{
   "intent": "<one of the available intents>",
   "confidence": <float between 0 and 1>,
@@ -80,10 +81,18 @@ Respond in JSON format ONLY (no markdown, no explanations):
     "dates": ["<date ranges if mentioned, else empty>"],
     "shifts": ["<shift IDs if mentioned, else empty>"]
   }}
-}}
-
-User query: {query}\
+}}\
 """
+
+
+def _build_messages(query: str) -> list[tuple[str, str]]:
+    """Build a proper system + human message pair (not a single flattened
+    string) so /no_think is honored as a system-level directive by models
+    that support Qwen3/Nemotron-style thinking-mode control tokens."""
+    return [
+        ("system", SYSTEM_PROMPT.format(intents=", ".join(VALID_INTENTS))),
+        ("human", f"User query: {query}"),
+    ]
 
 
 def classify_node(state: GodinezState) -> GodinezState:
@@ -91,7 +100,7 @@ def classify_node(state: GodinezState) -> GodinezState:
     Classify intent using LLM with confidence scoring and entity extraction.
 
     Fallback chain:
-      1. Qwen3.6-35B-A3B via vLLM on DGX (configurable via DGX_VLLM_URL env var)
+      1. NVIDIA-Nemotron-Nano-9B-v2 via vLLM on DGX (configurable via DGX_VLLM_URL env var)
       2. qwen3:8b via ollama on local machine (localhost:11434)
       3. Keyword matching fallback
 
@@ -119,11 +128,7 @@ def classify_node(state: GodinezState) -> GodinezState:
     content = None
     try:
         llm = _get_llm_primary()
-        prompt = SYSTEM_PROMPT.format(
-            intents=", ".join(VALID_INTENTS),
-            query=query,
-        )
-        response = llm.invoke(prompt)
+        response = llm.invoke(_build_messages(query))
         content = response.content.strip()
         llm_used = "primary"
     except Exception as e1:
@@ -132,11 +137,7 @@ def classify_node(state: GodinezState) -> GodinezState:
         # --- Attempt 2: Local Ollama ---
         try:
             llm = _get_llm_ollama()
-            prompt = SYSTEM_PROMPT.format(
-                intents=", ".join(VALID_INTENTS),
-                query=query,
-            )
-            response = llm.invoke(prompt)
+            response = llm.invoke(_build_messages(query))
             content = str(response.content).strip()
             llm_used = "ollama"
         except Exception as e2:
