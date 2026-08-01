@@ -127,7 +127,9 @@ python main.py --help
 
 ```bash
 python -m pytest --tb=short -q
-# Expected: 297 passed in ~25s
+# Expected: 320 passed in ~25s
+# (2 tracing tests in test_observability.py require a real LANGSMITH_API_KEY
+# and will fail without one — unrelated to the rest of the suite)
 ```
 
 Run a specific test file:
@@ -136,6 +138,7 @@ python -m pytest tests/test_workflow.py -q        # 40 tests — graph + nodes
 python -m pytest tests/test_api.py -q             # 12 tests — FastAPI endpoints
 python -m pytest tests/test_phase4.py -q          # 25 tests — bottleneck + cost
 python -m pytest tests/test_comprehensive.py -q   # 60 tests — edge cases + security
+python -m pytest tests/test_load_dataset.py -q    # 23 tests — dataset load command
 ```
 
 ---
@@ -159,6 +162,12 @@ python main.py analyze "Show me bottlenecks on Line 2" --session demo-01
 
 # Run a cost analysis query
 python main.py analyze "What is our total waste cost?" --session demo-01
+
+# Switch the dataset used for the rest of this session (see section 6a)
+python main.py analyze 'Load dataset "synthetic_production.csv"' --session demo-01
+
+# This query now reads synthetic_production.csv, not the default sample_production.csv
+python main.py analyze "What is our OEE this week?" --session demo-01
 
 # Generate a session report
 python main.py report --session demo-01
@@ -241,6 +250,69 @@ curl -s -o /dev/null -w "%{http_code}" \
   -X DELETE http://localhost:8000/api/data/sample_production.csv
 # Expected: 200
 ```
+
+---
+
+## 6a. Dataset Management — Upload & Switch
+
+Every analysis query (`oee`, `bottleneck`, `cost`, `trend`) reads a CSV dataset.
+Without any dataset selection, every session defaults to
+`data/sample_production.csv`.
+
+### Upload a dataset
+
+```bash
+curl -s -X POST http://localhost:8000/api/data \
+  -F "file=@/path/to/your_dataset.csv" | python3 -m json.tool
+```
+
+- Filename must end in `.csv`, ≤ 50 MB, and contain the required production
+  columns (`date, shift, machine_id, planned_minutes, actual_run_minutes,
+  downtime_minutes, ideal_cycle_time_seconds, total_count, good_count,
+  downtime_reason`).
+- Saved with a timestamped filename to avoid collisions
+  (e.g. `your_dataset_20260801_030512.csv`) — the response's `filename`
+  field is the exact name to use when loading it.
+
+### Switch the active dataset for a session
+
+Send a `Load dataset "<filename>"` command as a normal query, with a
+`session_id`. This is matched deterministically (no LLM call) — recognized
+phrasings are `load dataset X.csv`, `use dataset X.csv`, and
+`switch dataset to X.csv` / `switch to dataset X.csv`.
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Load dataset \"synthetic_production.csv\"", "session_id": "demo-01"}'
+```
+
+Response confirms row count, date range, and machine IDs. If the filename
+doesn't exist (in `data/`, including uploads), the response lists what's
+actually available instead:
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Load dataset \"missing.csv\"", "session_id": "demo-01"}'
+# Response: "⚠️ Dataset not found: missing.csv" + list of available datasets
+```
+
+Every subsequent query with the same `session_id` automatically uses the
+loaded dataset — no need to repeat the filename:
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the OEE trend?", "session_id": "demo-01"}'
+# Reads synthetic_production.csv, not the default sample_production.csv
+```
+
+> **Note:** the active dataset is tracked in-memory per process
+> (`src/graph/session_datasets.py`), scoped to `session_id`. It resets on
+> container/process restart and is not shared across multiple worker
+> processes — matches the current single-worker deployment
+> (`uvicorn ... --workers 1`).
 
 ---
 
@@ -430,6 +502,8 @@ deactivate
 | Run all tests | `python -m pytest -q` |
 | Start API server | `python main.py server` |
 | Run a query (CLI) | `python main.py analyze "..."` |
+| Upload a dataset | `curl -X POST /api/data -F "file=@x.csv"` |
+| Switch active dataset (session) | `python main.py analyze 'Load dataset "x.csv"' --session S` |
 | Build container | `docker build -t godinez:latest .` |
 | Start full stack | `docker compose up --build -d` |
 | View app logs | `docker compose logs app --follow` |

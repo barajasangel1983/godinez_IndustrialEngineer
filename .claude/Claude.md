@@ -246,3 +246,79 @@ All 297 tests still pass after the fix.
 ## Commits
 
 None this session — `state.py`, `Planning.md`, `Claude.md` edits are uncommitted.
+
+---
+
+# Session Log — 2026-08-01
+
+**Starting commit:** `f2436ad` (fix: use tempfile.gettempdir() instead of hardcoded /tmp/ for charts)
+
+## What was done this session
+
+### 1. LLM display in response output
+
+`response_node` (`src/graph/nodes/response.py`) now includes an
+`LLM: <model>` line (e.g. `Qwen3.6-35B-A3B (DGX)`, `qwen3:8b (Ollama
+fallback)`, `keyword matching (no LLM reachable)`) alongside `Intent:`,
+sourced from `classify_node`'s `metadata.classify_method`. Previously the
+only signal was a raw `⚠️ Errors encountered: Primary LLM failed: ...`
+block on failover, with no indication of which model actually answered on
+success. Errors are still shown when a fallback occurred.
+
+### 2. "Load dataset" command — per-session dataset switching
+
+Every analysis node (`oee`, `bottleneck`, `cost`, `trend`) previously read
+a hardcoded/inconsistent dataset: 3 nodes hardcoded
+`DATA_DIR/sample_production.csv`, 2 (`trend_analysis.py`, `response.py`)
+defaulted to `state.get("csv_path", "data/synthetic_production.csv")` but
+nothing ever set `csv_path`, so they silently always used
+`synthetic_production.csv`. There was no way to point a query at a
+different dataset, including ones already uploaded via `POST /api/data`.
+
+Added a `Load dataset "<file>.csv"` command (also `use dataset X.csv`,
+`switch dataset to X.csv`):
+
+- **Deterministic detection, not LLM-based** — a regex parser
+  (`src/tools/dataset_command.py`) runs in `intake_node`, before
+  `classify_node` ever calls an LLM. `classify_node` and `router_node`
+  both short-circuit (pass through unchanged) when intent is already
+  `load_dataset` — `router_node` previously unconditionally overwrote
+  `intent` via its own keyword scan on every query, which would have
+  silently reclassified the command as `general`.
+- **New node** `src/graph/nodes/load_dataset.py` validates the filename
+  via a shared path-safety helper (`src/tools/data_paths.py`, extracted
+  from `data_routes.py`'s `_safe_data_path` so both places share one
+  traversal guard), and on success stores it as the session's active
+  dataset via `src/graph/session_datasets.py` (in-memory dict keyed by
+  `session_id` — correct for the current single-worker deployment only,
+  not multi-process).
+- **Propagation**: `src/api/app.py` (`_run_query`) and
+  `src/cli/commands/analyze.py` both look up the session's active dataset
+  and inject `csv_path` into `initial_state` before every subsequent
+  query. All 5 analysis nodes now resolve `csv_path` identically via a
+  new shared `resolve_csv_path()` helper, fixing the
+  `sample_production.csv` vs `synthetic_production.csv` inconsistency
+  above as a byproduct.
+- `tests/test_load_dataset.py` — 23 new tests (regex parsing, path
+  traversal rejection, missing-file handling, session-store wiring,
+  end-to-end via the real graph).
+
+**Bug found and fixed in the same pass:** `tests/test_cli.py`'s
+`test_config_set_database_url_accepts_postgresql` sets
+`os.environ["DATABASE_URL"]` as a real side effect of `config_set()`
+(`src/cli/commands/config.py:132`) and never restored it — this leaked a
+`postgresql://` URL into every test running afterward that hits
+`/api/query`'s persistence path, causing a `ModuleNotFoundError:
+psycopg2` deep in SQLAlchemy. This was the actual cause of 3 of what
+looked like 5 "flaky" pre-existing test failures. Fixed with an autouse
+fixture on `TestConfigCommand` that snapshots/restores `DATABASE_URL`.
+
+Test count: 297 → 320 (318 passing; 2 pre-existing `test_observability.py`
+tracing failures need a real `LANGSMITH_API_KEY`, unrelated).
+
+## Commits
+
+```
+c3c8350  feat: add "load dataset" command for per-session dataset switching
+1d73e44  feat: show which LLM answered the query in response output
+```
