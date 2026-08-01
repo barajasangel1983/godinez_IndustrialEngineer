@@ -336,6 +336,62 @@ for the next one).
 
 Test count: 320 → 337 (335 passing, same 2 pre-existing tracing failures).
 
+### 4. Chart & graph testing docs, plus a real bug found while verifying them
+
+Section 6b added to `demo_instructions.md` — one verified prompt per chart
+type. Writing it end-to-end against the live container surfaced two real
+bugs, both fixed:
+
+- `create_oee_trend_chart`'s forecast overlay (`src/tools/chart_templates.py:126`)
+  did `trend["slope"]` / `trend["direction"]` on `TrendEngine.analyze_trend`'s
+  return value — a `TrendResult` dataclass (attribute access only,
+  `direction` is `"up"`/`"down"`/`"stable"`, not a dict). This silently
+  crashed and dropped the OEE trend chart on **every** `trend`-intent query
+  (`show_forecast=True` always), pre-existing, unrelated to this session's
+  earlier work. Fixed by mapping direction to a ±1/0 multiplier.
+- `router_node` does a first-match keyword scan in a fixed order (`oee`
+  before `trend`), so a prompt containing both words (e.g. "Show me the
+  OEE trend") always resolves to `oee`, silently overriding whatever the
+  real LLM classified — documented as a gotcha rather than fixed (changing
+  router priority is a bigger, separate decision).
+
+Also added a general `docker cp` recipe for pulling any chart out of
+`/tmp` in the container, and documented the current (manual, rebuild
+required) process for changing which model `classify.py` uses — no
+runtime command for that; discussed and explicitly decided against
+building one (a "add model" template-based flow) as more complexity than
+warranted right now.
+
+### 5. Multi-worker bug in session_datasets — found by asking "what breaks once persistence is on"
+
+User asked what in this session's changes would break once DB persistence
+is enabled. Traced it to `scripts/start.sh:41-45`: uvicorn runs with
+`WORKERS=2` (default) the moment `DATABASE_URL` is a real database (only
+SQLite/off stays single-worker) — and `session_datasets._active`
+(added in commit `c3c8350`) was a plain in-process dict, not shared
+between worker processes. Effect: `Load dataset` in one request could be
+invisible to the next request in the same session, non-deterministically,
+depending on which worker handled each one.
+
+Fixed by backing `session_datasets.py` with the DB instead of pure memory:
+- `Session.active_dataset` column (`src/persistence/models.py`) +
+  `alembic/versions/002_add_active_dataset.py`.
+- `set_session_active_dataset()` / `get_session_active_dataset()` in
+  `src/persistence/repositories.py`, following the existing
+  `@_session_or_default` pattern (upsert via `create_session()` reuse).
+- `session_datasets.get_active_dataset()`/`set_active_dataset()` now check
+  `is_persistence_available()` first and delegate to the DB, falling back
+  to the in-memory dict when persistence is off — which stays correct
+  there since `start.sh` keeps that mode single-worker, and it's also
+  what backs local dev (`python main.py server`, which never goes through
+  `start.sh`).
+- Verified the actual failure mode directly: set a value, cleared the
+  in-memory dict (simulating a second worker process), confirmed the
+  value still resolved correctly via the DB — same test now lives in
+  `tests/test_load_dataset.py::TestSessionDatasetsPersistenceBacked`.
+
+Test count: 337 → 345 (343 passing, same 2 pre-existing tracing failures).
+
 ## Commits
 
 ```

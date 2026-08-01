@@ -22,6 +22,8 @@ from src.persistence.repositories import (
     get_session_summary,
     persist_query_result,
     get_all_sessions,
+    set_session_active_dataset,
+    get_session_active_dataset,
     is_persistence_available,
 )
 
@@ -148,6 +150,40 @@ class TestSessionRepository:
         ids = [s.session_id for s in sessions]
         assert "s-a" in ids
         assert "s-b" in ids
+
+
+class TestActiveDatasetRepository:
+    def test_get_returns_none_for_unknown_session(self, db):
+        assert get_session_active_dataset("never-seen", session=db) is None
+
+    def test_set_then_get_roundtrips(self, db):
+        set_session_active_dataset("ds-sess-1", "synthetic_production.csv", session=db)
+        db.commit()
+        assert get_session_active_dataset("ds-sess-1", session=db) == "synthetic_production.csv"
+
+    def test_set_creates_session_if_missing(self, db):
+        set_session_active_dataset("ds-sess-2", "sample_production.csv", session=db)
+        db.commit()
+        record = db.query(Session).filter_by(session_id="ds-sess-2").first()
+        assert record is not None
+        assert record.active_dataset == "sample_production.csv"
+
+    def test_set_updates_existing_session_without_duplicating(self, db):
+        create_session("ds-sess-3", user_id="bob", session=db)
+        db.commit()
+        set_session_active_dataset("ds-sess-3", "synthetic_production.csv", session=db)
+        db.commit()
+        records = db.query(Session).filter_by(session_id="ds-sess-3").all()
+        assert len(records) == 1
+        assert records[0].user_id == "bob"  # untouched
+        assert records[0].active_dataset == "synthetic_production.csv"
+
+    def test_set_overwrites_previous_value(self, db):
+        set_session_active_dataset("ds-sess-4", "sample_production.csv", session=db)
+        db.commit()
+        set_session_active_dataset("ds-sess-4", "synthetic_production.csv", session=db)
+        db.commit()
+        assert get_session_active_dataset("ds-sess-4", session=db) == "synthetic_production.csv"
 
 
 class TestQueryRepository:

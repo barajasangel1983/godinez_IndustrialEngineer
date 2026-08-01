@@ -161,7 +161,7 @@ python main.py --help
 
 ```bash
 python -m pytest --tb=short -q
-# Expected: 335 passed in ~25s
+# Expected: 343 passed in ~25s
 # (2 tracing tests in test_observability.py require a real LANGSMITH_API_KEY
 # and will fail without one — unrelated to the rest of the suite)
 ```
@@ -172,7 +172,8 @@ python -m pytest tests/test_workflow.py -q        # 40 tests — graph + nodes
 python -m pytest tests/test_api.py -q             # 12 tests — FastAPI endpoints
 python -m pytest tests/test_phase4.py -q          # 25 tests — bottleneck + cost
 python -m pytest tests/test_comprehensive.py -q   # 60 tests — edge cases + security
-python -m pytest tests/test_load_dataset.py -q    # 40 tests — dataset load/list commands
+python -m pytest tests/test_load_dataset.py -q    # 43 tests — dataset load/list commands
+python -m pytest tests/test_persistence.py -q     # 31 tests — DB models, config, repositories
 ```
 
 ---
@@ -375,11 +376,15 @@ whichever dataset is active for that `session_id`:
 
 REST-only — no prompt command for this. See section 6 (`DELETE /api/data/{filename}`).
 
-> **Note:** the active dataset is tracked in-memory per process
-> (`src/graph/session_datasets.py`), scoped to `session_id`. It resets on
-> container/process restart and is not shared across multiple worker
-> processes — matches the current single-worker deployment
-> (`uvicorn ... --workers 1`).
+> **Note:** the active dataset (`src/graph/session_datasets.py`, scoped to
+> `session_id`) is backed by the `sessions.active_dataset` DB column
+> whenever persistence is enabled (`DATABASE_URL` set to a real database),
+> so it's shared correctly across multiple uvicorn workers — `scripts/start.sh`
+> runs 2+ workers by default the moment `DATABASE_URL` isn't `off`/SQLite,
+> which an in-memory-only store would not survive. When persistence is off
+> (local dev, or the single-container demo's `DATABASE_URL=off`), it falls
+> back to an in-memory dict — correct there too, since that mode always
+> stays single-worker — but is lost on restart in that case.
 
 ---
 

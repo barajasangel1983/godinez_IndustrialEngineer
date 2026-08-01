@@ -42,6 +42,7 @@ class Session(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(64), unique=True, nullable=False, index=True)
     user_id = Column(String(128), nullable=True)
+    active_dataset = Column(String(255), nullable=True)  # filename set via "Load dataset" command
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -87,6 +87,39 @@ def get_all_sessions(
     return sessions
 
 
+@_session_or_default
+def set_session_active_dataset(
+    session_id: str,
+    filename: str,
+    user_id: Optional[str] = None,
+    *,
+    session: SASession = None,
+) -> Session:
+    """
+    Set the active dataset for a session (upsert — creates the session if
+    it doesn't exist yet).
+
+    Backs the "Load dataset" command's session_datasets store when
+    persistence is available, so the active dataset is shared across
+    uvicorn worker processes (see src/graph/session_datasets.py).
+    """
+    record = create_session(session_id, user_id, session=session)
+    record.active_dataset = filename
+    session.flush()
+    return record
+
+
+@_session_or_default
+def get_session_active_dataset(
+    session_id: str,
+    *,
+    session: SASession = None,
+) -> Optional[str]:
+    """Get the active dataset for a session, or None if never set / session unknown."""
+    record = session.query(Session).filter_by(session_id=session_id).first()
+    return record.active_dataset if record else None
+
+
 # ── Query Repository ──────────────────────────────────────────────
 
 
@@ -355,5 +388,7 @@ __all__ = [
     "get_session_summary",
     "persist_query_result",
     "get_all_sessions",
+    "set_session_active_dataset",
+    "get_session_active_dataset",
     "is_persistence_available",
 ]

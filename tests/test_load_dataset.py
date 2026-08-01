@@ -15,7 +15,11 @@ a follow-up query) are exactly what those files exist for.
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
+import src.persistence.config as db_config
+from src.persistence.models import Base
 from src.tools.dataset_command import extract_dataset_filename, is_list_datasets_command
 from src.tools.data_paths import resolve_csv_path, safe_data_path, DEFAULT_DATASET
 from src.graph import session_datasets
@@ -285,3 +289,55 @@ class TestCsvPathWiring:
         assert resp.status_code == 200
         assert captured["session_id"] == "brand-new-session-never-loaded"
         assert "csv_path" not in captured
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Multi-worker regression — session_datasets must not rely solely on
+# in-process memory when persistence is available (scripts/start.sh runs
+# 2+ uvicorn workers by default once DATABASE_URL is a real database).
+# ═══════════════════════════════════════════════════════════════════
+
+class TestSessionDatasetsPersistenceBacked:
+
+    @pytest.fixture(autouse=True)
+    def _sqlite_engine(self, monkeypatch):
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        monkeypatch.setattr(db_config, "_engine", engine)
+        yield engine
+
+    def test_survives_in_memory_dict_being_cleared(self):
+        """Simulates a second worker process (which never saw the in-memory
+        write) still resolving the correct active dataset via the DB."""
+        session_datasets.set_active_dataset("multiworker-sess", "synthetic_production.csv")
+
+        # A second uvicorn worker process would have its own empty _active
+        # dict — simulate that here instead of spawning a real process.
+        session_datasets._active.clear()
+
+        assert session_datasets.get_active_dataset("multiworker-sess") == "synthetic_production.csv"
+
+    def test_overwrite_is_visible_across_simulated_workers(self):
+        session_datasets.set_active_dataset("multiworker-sess-2", "sample_production.csv")
+        session_datasets._active.clear()
+        session_datasets.set_active_dataset("multiworker-sess-2", "synthetic_production.csv")
+        session_datasets._active.clear()
+        assert session_datasets.get_active_dataset("multiworker-sess-2") == "synthetic_production.csv"
+
+    def test_load_dataset_command_persists_across_simulated_worker(self):
+        """End-to-end: the real load_dataset_node, then a simulated other
+        worker still sees the change."""
+        result = load_dataset_node({
+            "entities": {"dataset_filename": "synthetic_production.csv"},
+            "session_id": "multiworker-sess-3",
+            "errors": [],
+        })
+        assert result["metadata"]["load_dataset"] == "success"
+
+        session_datasets._active.clear()
+
+        assert session_datasets.get_active_dataset("multiworker-sess-3") == "synthetic_production.csv"
