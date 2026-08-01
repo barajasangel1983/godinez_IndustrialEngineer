@@ -177,7 +177,7 @@ python main.py --help
 
 ```bash
 python -m pytest --tb=short -q
-# Expected: 343 passed in ~25s
+# Expected: 352 passed in ~25s
 # (2 tracing tests in test_observability.py require a real LANGSMITH_API_KEY
 # and will fail without one — unrelated to the rest of the suite)
 ```
@@ -606,6 +606,54 @@ every query in that session.
 > (same container, same filesystem layer), but not a rebuild/recreate. For
 > data that needs to survive that, use the `docker compose` deployment
 > (section 8), which mounts a real volume.
+
+### Token usage and context size
+
+Every LLM classification call now reports usage in the response, both in
+the top-level `metadata` and per-node in `execution_summary`:
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is our OEE this week?", "session_id": "usage-demo"}' \
+  | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+print('total tokens:', d['metadata']['tokens_used'])
+print('context size (input tokens):', d['metadata']['input_tokens'])
+print('output tokens:', d['metadata']['output_tokens'])
+"
+```
+
+`input_tokens` is the context size actually sent to the model for that
+call (the full system+human message pair from `_build_messages()` —
+`src/graph/nodes/classify.py`). This only reflects real LLM calls: the
+`load_dataset`/`list_datasets` system commands and the keyword-fallback
+path never call an LLM, so their `tokens_used` is absent. The CLI shows
+the total too: `python main.py analyze "..."` prints `🔤 Tokens used: N`
+in its execution summary footer.
+
+### Visualize the DB with a GUI tool
+
+For browsing beyond one-off `sqlite3`/`docker exec` queries, point an
+existing DB tool at it instead of building anything bespoke:
+
+- **DB Browser for SQLite** (free, GUI, all platforms) — for the SQLite
+  path used above. Copy the file out first since it's inside the
+  container: `docker cp godinez-demo:/app/data/godinez.db ./godinez.db`,
+  then open `godinez.db` directly. Browse `sessions`/`queries`/`results`,
+  run ad-hoc SQL, export to CSV.
+- **`sqlite3` CLI**, quick and no install beyond what's already used above:
+  ```bash
+  docker cp godinez-demo:/app/data/godinez.db ./godinez.db
+  sqlite3 -header -column ./godinez.db "SELECT * FROM queries ORDER BY id DESC LIMIT 20;"
+  ```
+- **DBeaver / TablePlus / pgAdmin** — for the `docker compose` PostgreSQL
+  deployment (section 8), connect directly to `localhost:5432` (or
+  whatever port the `db` service exposes) with the credentials from
+  `docker-compose.yml`.
+
+No new code needed for any of this — it's the same 3-table schema either way.
 
 ### Stop and remove
 ```bash

@@ -129,6 +129,7 @@ class ExecutionMetrics:
             "session_id": self.session_id,
             "total_nodes": len(self.nodes),
             "total_latency_ms": round(self.get_total_latency_ms(), 2),
+            "tokens_used": sum(n.tokens_used for n in self.nodes if n.tokens_used) or None,
             "execution_order": self.get_execution_order(),
             "nodes": [
                 {

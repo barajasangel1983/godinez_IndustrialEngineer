@@ -43,6 +43,12 @@ def _wrap_node(fn, node_name, logger, metrics, tracer=None):
         # Start tracking
         execution_order = metrics.start_node(node_name, intent=state.get("intent"))
         start_time = time.perf_counter()
+        # metadata (and tokens_used within it) is cumulative across the whole
+        # graph — each node spreads the incoming state's metadata forward. To
+        # attribute tokens_used to the node that actually produced it (not
+        # every downstream node that merely passes it through unchanged),
+        # compare against what was already present before this node ran.
+        incoming_tokens_used = state.get("metadata", {}).get("tokens_used")
 
         # Log start
         logger.info(
@@ -65,7 +71,10 @@ def _wrap_node(fn, node_name, logger, metrics, tracer=None):
 
             # Extract metadata from result (if any)
             node_metadata = result.get("metadata", {})
-            tokens_used = node_metadata.get("tokens_used")
+            result_tokens_used = node_metadata.get("tokens_used")
+            tokens_used = (
+                result_tokens_used if result_tokens_used != incoming_tokens_used else None
+            )
 
             # End tracking
             metrics.end_node(

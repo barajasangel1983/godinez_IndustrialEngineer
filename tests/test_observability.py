@@ -173,6 +173,29 @@ class TestExecutionMetrics:
         assert len(summary["execution_order"]) == 1
         assert summary["execution_order"][0] == "analyze"
 
+    def test_get_summary_aggregates_tokens_used_across_nodes(self):
+        """Top-level tokens_used should sum every node's token count."""
+        from src.observability import ExecutionMetrics
+        metrics = ExecutionMetrics(session_id="test-tokens")
+
+        metrics.start_node("classify")
+        metrics.end_node("classify", latency_ms=10.0, tokens_used=150)
+        metrics.start_node("response")
+        metrics.end_node("response", latency_ms=5.0)  # no tokens_used — shouldn't crash the sum
+
+        summary = metrics.get_summary()
+        assert summary["tokens_used"] == 150
+
+    def test_get_summary_tokens_used_none_when_no_node_reports_it(self):
+        from src.observability import ExecutionMetrics
+        metrics = ExecutionMetrics(session_id="test-no-tokens")
+
+        metrics.start_node("router")
+        metrics.end_node("router", latency_ms=1.0)
+
+        summary = metrics.get_summary()
+        assert summary["tokens_used"] is None
+
     def test_record_metadata(self):
         """Should record workflow-level metadata."""
         from src.observability import ExecutionMetrics

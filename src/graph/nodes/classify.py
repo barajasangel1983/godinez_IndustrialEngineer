@@ -14,6 +14,7 @@ Sets human_review=True when confidence < 0.5 (low-confidence threshold).
 
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
@@ -126,10 +127,12 @@ def classify_node(state: GodinezState) -> GodinezState:
     # --- Attempt 1: Primary LLM ---
     llm = None
     content = None
+    usage = None
     try:
         llm = _get_llm_primary()
         response = llm.invoke(_build_messages(query))
         content = response.content.strip()
+        usage = getattr(response, "usage_metadata", None)
         llm_used = "primary"
     except Exception as e1:
         errors.append(f"Primary LLM failed: {e1}")
@@ -139,6 +142,7 @@ def classify_node(state: GodinezState) -> GodinezState:
             llm = _get_llm_ollama()
             response = llm.invoke(_build_messages(query))
             content = str(response.content).strip()
+            usage = getattr(response, "usage_metadata", None)
             llm_used = "ollama"
         except Exception as e2:
             errors.append(f"Ollama fallback failed: {e2}")
@@ -181,7 +185,20 @@ def classify_node(state: GodinezState) -> GodinezState:
             **state.get("metadata", {}),
             "classify_method": llm_used,
             "classify_entities": result.entities,
+            **_usage_metadata(usage),
         },
+    }
+
+
+def _usage_metadata(usage: Optional[dict]) -> dict:
+    """Map a LangChain UsageMetadata dict to the fields _wrap_node/ExecutionMetrics
+    expect (tokens_used) plus a breakdown (input/output/context size)."""
+    if not usage:
+        return {}
+    return {
+        "tokens_used": usage.get("total_tokens"),
+        "input_tokens": usage.get("input_tokens"),  # context size sent to the model
+        "output_tokens": usage.get("output_tokens"),
     }
 
 

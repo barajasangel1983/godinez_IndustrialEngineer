@@ -277,6 +277,96 @@ class TestClassifyNode:
         )
 
 
+from src.graph.nodes.classify import _usage_metadata
+
+
+class TestUsageMetadata:
+    """_usage_metadata() maps a LangChain UsageMetadata dict to the fields
+    _wrap_node/ExecutionMetrics expect."""
+
+    def test_none_returns_empty_dict(self):
+        assert _usage_metadata(None) == {}
+
+    def test_empty_dict_returns_empty_dict(self):
+        assert _usage_metadata({}) == {}
+
+    def test_maps_total_input_output_tokens(self):
+        usage = {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
+        result = _usage_metadata(usage)
+        assert result == {
+            "tokens_used": 150,
+            "input_tokens": 120,
+            "output_tokens": 30,
+        }
+
+    def test_missing_fields_map_to_none(self):
+        result = _usage_metadata({"total_tokens": 42})
+        assert result["tokens_used"] == 42
+        assert result["input_tokens"] is None
+        assert result["output_tokens"] is None
+
+
+class TestWrapNodeTokensUsedAttribution:
+    """metadata (and tokens_used within it) is cumulative across the graph —
+    every node spreads the incoming state's metadata forward. _wrap_node
+    must only attribute tokens_used to the node that actually produced it,
+    not every downstream node that merely passes the same value through."""
+
+    def _run(self, fn, state, node_name="node"):
+        from src.graph.workflow import _wrap_node
+        from src.observability import ExecutionMetrics, ObservationLogger
+
+        metrics = ExecutionMetrics(session_id="test-attribution")
+        logger = ObservationLogger("test", session_id="test-attribution")
+        wrapped = _wrap_node(fn, node_name, logger, metrics)
+        wrapped(state)
+        return metrics.get_summary()
+
+    def test_node_that_introduces_tokens_used_gets_attributed(self):
+        def classify_like(state):
+            return {"metadata": {**state.get("metadata", {}), "tokens_used": 219}}
+
+        summary = self._run(classify_like, {"metadata": {}})
+        assert summary["nodes"][0]["tokens_used"] == 219
+
+    def test_node_that_only_passes_through_unchanged_value_is_not_attributed(self):
+        def router_like(state):
+            # Spreads incoming metadata forward unchanged — this is exactly
+            # what router_node/analyze_node/response_node do.
+            return {"metadata": {**state.get("metadata", {}), "router_intent": "oee"}}
+
+        summary = self._run(router_like, {"metadata": {"tokens_used": 219}})
+        assert summary["nodes"][0]["tokens_used"] is None
+
+    def test_full_chain_only_attributes_once(self):
+        """Regression test: simulates classify -> router -> analyze -> response.
+        Total tokens_used across all 4 nodes must equal 219, not 219*4."""
+        from src.graph.workflow import _wrap_node
+        from src.observability import ExecutionMetrics, ObservationLogger
+
+        metrics = ExecutionMetrics(session_id="test-chain")
+        logger = ObservationLogger("test", session_id="test-chain")
+
+        def classify_like(state):
+            return {"metadata": {**state.get("metadata", {}), "tokens_used": 219}}
+
+        def passthrough_like(state):
+            return {"metadata": {**state.get("metadata", {})}}
+
+        state = {"metadata": {}}
+        for name, fn in [
+            ("classify", classify_like),
+            ("router", passthrough_like),
+            ("analyze", passthrough_like),
+            ("response", passthrough_like),
+        ]:
+            wrapped = _wrap_node(fn, name, logger, metrics)
+            state = {**state, **wrapped(state)}
+
+        summary = metrics.get_summary()
+        assert summary["tokens_used"] == 219
+
+
 class TestKeywordFallback:
 
     def test_keyword_oee(self):

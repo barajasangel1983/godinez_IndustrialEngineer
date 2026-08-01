@@ -488,6 +488,52 @@ always `null` — `app.py` reads `response.metadata.get
 ["confidence"]` directly, never nests it under that metadata key. Cosmetic
 (nothing crashes), separate issue.
 
+### 8. Wired up token/context-size capture — found a second real bug doing it
+
+User asked whether "visualize the DB" needed new functionality, given the
+persistence deep-dive above. Checked first rather than assuming: the
+`tokens_used` display slot already existed end-to-end (`ExecutionMetrics`,
+`ObservationLogger`, `execution_summary.nodes[i].tokens_used`) — just never
+populated, since `classify_node` never read `response.usage_metadata` off
+the LangChain response. Query history already existed too
+(`GET /api/results/{session_id}`, `python main.py report --session X`) —
+no new functionality needed there, just pointing at what's already built.
+
+**Fix 1** — `classify_node` now captures `response.usage_metadata` (a
+standard `AIMessage` field, confirmed present in the installed
+`langchain-core`) from both the primary and Ollama calls, mapped via a new
+`_usage_metadata()` helper into `tokens_used`/`input_tokens`
+(context size)/`output_tokens` in the node's returned metadata.
+
+**Fix 2, found live-testing Fix 1** — the very first live test showed
+`execution_summary.tokens_used` as 876 instead of 219 (4× the real value).
+Root cause: `metadata` is cumulative state — every node spreads
+`**state.get("metadata", {})` forward, so `router`/`analyze`/`response`
+all still had classify's `tokens_used` key sitting in their own returned
+metadata even though they never touched it, and `_wrap_node`
+(`src/graph/workflow.py`) naively read `node_metadata.get("tokens_used")`
+off the full merged dict every time, attributing the same 219 tokens to
+all 4 downstream nodes. Fixed by comparing against what was already in
+the *incoming* state's metadata before the node ran — only attribute
+`tokens_used` when it actually changed. Also silently fixes a third,
+independent pre-existing bug this exposed: `cli/commands/analyze.py:112`
+reads a top-level `summary["tokens_used"]` that `ExecutionMetrics.
+get_summary()` never returned (only nested per-node) — the CLI's
+"🔤 Tokens used" line has never printed since it was written. Now does
+(`get_summary()` gained a proper top-level aggregate).
+
+Verified live end-to-end after both fixes: `execution_summary.tokens_used`
+== 219, only the `classify` node shows non-null per-node `tokens_used`,
+and the CLI actually prints `🔤 Tokens used: 219`.
+
+Also documented (not built): GUI DB browsing (DB Browser for SQLite via
+`docker cp` + open the file; `sqlite3` CLI one-liner; DBeaver/pgAdmin for
+the Postgres/Compose path) — recommended pointing existing tools at the
+DB over building a bespoke viewer for a personal-reference tool that
+already exposes everything as JSON/CLI.
+
+Test count: 345 → 354 (352 passing, same 2 pre-existing tracing failures).
+
 ## Commits
 
 ```
