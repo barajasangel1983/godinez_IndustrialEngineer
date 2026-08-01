@@ -362,6 +362,32 @@ curl -s -X POST http://localhost:8000/api/query \
   -d '{"query": "Load dataset \"synthetic_production.csv\"", "session_id": "chart-test"}'
 ```
 
+### Pull a chart file directly from the container
+
+Every chart is rendered with `tempfile.gettempdir()` (`/tmp` inside the
+container) as its save path, regardless of which intent triggered it. You
+can always pull the latest-generated file out with `docker cp`, whether or
+not that chart type is returned by the API:
+
+```bash
+# See what's currently in /tmp
+docker exec godinez-demo sh -c 'ls -la /tmp/*.png'
+
+# Copy one out to your current directory
+docker cp godinez-demo:/tmp/oee_trend_chart.png ./oee_trend_chart.png
+docker cp godinez-demo:/tmp/control_chart.png ./control_chart.png
+docker cp godinez-demo:/tmp/pareto_chart.png ./pareto_chart.png
+```
+
+> **Caveat:** filenames aren't intent-specific — `oee_trend_chart.png` is
+> written by both the `oee` intent and the `trend` intent (the `oee`
+> version wraps the same function with `show_forecast=False`). Running one
+> right after the other overwrites the same file, so `docker cp` always
+> gets you the *most recently generated* chart of that type, not
+> necessarily the one from the query you just ran. If that matters, `docker
+> exec ... ls -la /tmp/*.png` first to check the modified time, or use the
+> base64-in-response method below for the `trend` intent instead.
+
 ### Trend intent — 3 charts, returned in the API response
 
 `trend` is the only intent whose charts actually come back in the JSON
@@ -398,15 +424,14 @@ The command above writes `oee_trend.png`, `control_chart.png`, and
 `oee_analysis_node` also builds an OEE trend chart and a downtime pie
 chart (via a separate, older chart module), but `QueryResponse` has no
 `attachments` field — they're rendered to a temp path inside the
-container and then dropped, never reaching the JSON response. To confirm
-they're generated and inspect them:
+container and then dropped, never reaching the JSON response. Use the
+`docker cp` method above to pull them out and confirm:
 
 ```bash
 curl -s -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "What is our OEE?", "session_id": "chart-test"}' > /dev/null
 
-docker exec godinez-demo sh -c 'ls -la /tmp/*.png'
 docker cp godinez-demo:/tmp/oee_trend_chart.png ./oee_chart_from_oee_intent.png
 ```
 
