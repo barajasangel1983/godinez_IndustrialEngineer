@@ -19,11 +19,13 @@ def response_node(state: GodinezState) -> GodinezState:
     intent = state.get("intent")
     errors = state.get("errors", [])
     attachments = list(state.get("attachments", []) or [])
+    metadata = state.get("metadata", {})
 
     # Build a formatted response
     formatted = f"**Godínez IndustrialEngineer**\n"
     formatted += f"{'=' * 40}\n"
     formatted += f"Intent: {intent or 'unknown'}\n"
+    formatted += f"LLM: {_describe_llm(metadata.get('classify_method'))}\n"
     formatted += f"\n{response}\n"
 
     # Generate trend charts if trend analysis was performed
@@ -45,6 +47,18 @@ def response_node(state: GodinezState) -> GodinezState:
         "charts": charts if charts else None,  # Base64-encoded chart data for API responses
         "metadata": {**state.get("metadata", {}), "phase": "3", "chart_count": len(charts)},
     }
+
+
+_LLM_DISPLAY_NAMES = {
+    "primary": "Qwen3.6-35B-A3B (DGX)",
+    "ollama": "qwen3:8b (Ollama fallback)",
+    "keyword_fallback": "keyword matching (no LLM reachable)",
+}
+
+
+def _describe_llm(classify_method: str | None) -> str:
+    """Map the classify node's llm_used value to a human-readable label."""
+    return _LLM_DISPLAY_NAMES.get(classify_method, "unknown")
 
 
 def _generate_trend_charts(analysis_results: dict, state: GodinezState) -> list[dict]:
