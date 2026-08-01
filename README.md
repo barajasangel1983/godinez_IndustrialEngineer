@@ -406,8 +406,9 @@ Must be strictly ascending: `critical < needs_improvement < good < world_class`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LANGSMITH_API_KEY` | — | Enables LangSmith tracing when set |
-| `LANGCHAIN_TRACING_V2` | `false` | Set `true` to enable tracing |
+| `LANGSMITH_API_KEY` | — | Required by both tracing mechanisms below |
+| `LANGSMITH_TRACING` | `false` | Set `true` to enable this app's own node-level tracing (`src/observability/tracing.py`) |
+| `LANGCHAIN_TRACING_V2` | `false` | Set `true` to enable LangChain's separate built-in auto-tracing |
 | `LANGCHAIN_PROJECT` | `godinez-industrial-engineer` | LangSmith project name |
 
 #### Docker / Server
