@@ -3,7 +3,8 @@
 > **Audience:** Personal reference  
 > **LLM fallback chain:** NVIDIA-Nemotron-Nano-9B-v2 via vLLM on the DGX Spark (primary) → Ollama `qwen3:8b` (local fallback) → keyword matching (final fallback). No OpenAI key required.  
 > **DGX reachability:** the classify node hits `DGX_VLLM_URL` directly (default `http://100.74.225.3:8003/v1`) — on a VPS this only works if Tailscale is up and connected to the DGX Spark's tailnet.  
-> **Persistence:** enabled by default in this environment's `.env` (`DATABASE_URL=sqlite:///data/godinez.db`) — every query and the active dataset per session are saved. `.env.example` still ships with `DATABASE_URL=off` as the safe default for a fresh clone; see section 7 to toggle it.  
+> **Persistence:** enabled by default in this environment's `.env` (`DATABASE_URL=sqlite:///data/godinez.db`) — every query and the active dataset per session are saved. `.env.example` still ships with `DATABASE_URL=off` as the safe default for a fresh clone; see section 7 to toggle it. This environment's `godinez-demo` container also uses a named volume (`godinez-demo-data`) so this data survives a full container recreate, not just a restart.  
+> **Tracing:** this environment's `.env` has a real `LANGSMITH_API_KEY` plus both `LANGSMITH_TRACING=true` and `LANGCHAIN_TRACING_V2=true` set — see section 2d for why both are needed.  
 > **Sections with OS differences:** Linux and Windows (PowerShell) blocks shown separately  
 > **Docker sections:** identical on both platforms
 
@@ -107,6 +108,30 @@ wired into `classify.py` — changing them has no effect on which model
 actually runs. Editing the two `_get_llm_*()` functions directly is the
 only thing that works today.
 
+### 2d. Enable LangSmith tracing (optional)
+
+There are two separate tracing toggles that both need a real
+`LANGSMITH_API_KEY` — easy to set only one and wonder why nothing shows up:
+
+```env
+LANGSMITH_API_KEY=lsv2_pt_...
+LANGSMITH_TRACING=true       # this app's own node-level tracing (src/observability/tracing.py)
+LANGCHAIN_TRACING_V2=true    # LangChain's separate built-in auto-tracing
+```
+
+`LANGCHAIN_TRACING_V2` alone (the older, more commonly documented name)
+does **not** enable this app's tracing — `_is_tracing_enabled()` reads
+`LANGSMITH_TRACING` specifically. Set both. Verify:
+
+```bash
+curl -s http://localhost:8000/health
+# {"status":"healthy","version":"0.6.0","tracing_enabled":true}
+```
+
+**If you're passing these to an already-running container**, `--env-file`
+is only read at `docker run` time — a plain `docker restart` will not pick
+up `.env` changes. Recreate the container (see section 7) instead.
+
 ---
 
 ## 3. Local Setup
@@ -177,9 +202,9 @@ python main.py --help
 
 ```bash
 python -m pytest --tb=short -q
-# Expected: 352 passed in ~25s
-# (2 tracing tests in test_observability.py require a real LANGSMITH_API_KEY
-# and will fail without one — unrelated to the rest of the suite)
+# Expected: 355 passed in ~80s
+# (2 tracing tests in test_observability.py require LANGSMITH_API_KEY +
+# LANGSMITH_TRACING=true in your real environment — see section 2d)
 ```
 
 Run a specific test file:
@@ -524,8 +549,29 @@ docker run -d \
   --name godinez-demo \
   -p 8000:8000 \
   --env-file .env \
+  -v godinez-demo-data:/app/data \
   godinez:latest
 ```
+
+> The `-v godinez-demo-data:/app/data` volume is what makes the SQLite DB
+> and uploaded datasets survive a full `stop && rm && run` recreate, not
+> just a `docker restart`. Without it, `/app/data` lives only in the
+> container's writable layer and is lost on recreate (see the "Enable
+> persistence" note below for what happens without this flag).
+>
+> **Gotcha if you ever manually copy files into this volume** (e.g.
+> restoring a backup with `docker cp` + a helper container): the app
+> runs as a non-root user (`godinez`, a fixed system UID — check with
+> `docker exec godinez-demo id godinez`) inside the container. Files
+> copied in via a different tool (like an `alpine` helper container)
+> often land owned by *that* tool's UID instead, which the app can read
+> but not write — SQLite will fail with `attempt to write a readonly
+> database` even though `ls -la` shows normal-looking permissions. Fix
+> with `docker exec -u root godinez-demo chown -R godinez:godinez
+> /app/data`, then **restart the container** — SQLite connections lock in
+> read-only mode at the moment they're opened, so an already-running
+> process won't pick up the corrected permissions until it reopens the
+> file with a fresh connection.
 
 > Uses `--env-file .env` so the container picks up `DATABASE_URL=off` (no DB required)
 > and `DGX_VLLM_URL` (NVIDIA-Nemotron-Nano-9B-v2 via vLLM on the DGX Spark, reached over Tailscale).
@@ -584,8 +630,10 @@ curl -s http://localhost:8000/api/persistence/status
 # {"enabled":true,"database_type":"sqlite"}
 ```
 
-Run a couple of queries, then look at the actual rows — no volume is
-mounted for this demo, so the DB lives inside the container:
+Run a couple of queries, then look at the actual rows. If you ran the
+container with the `-v godinez-demo-data:/app/data` volume from the `Run`
+step above, the DB lives in that named volume (survives recreate); if you
+omitted the flag, it lives only in the container's writable layer:
 ```bash
 docker exec godinez-demo python3 -c "
 import sqlite3
@@ -601,11 +649,13 @@ Or through the API instead of raw SQL: `GET /api/results/{session_id}`
 returns the same data (query text, intent, full response, metadata) for
 every query in that session.
 
-> Since there's no volume mount here, the DB resets whenever the container
-> is recreated (`stop && rm && run`) — it survives a plain `docker restart`
-> (same container, same filesystem layer), but not a rebuild/recreate. For
-> data that needs to survive that, use the `docker compose` deployment
-> (section 8), which mounts a real volume.
+> With the named volume (`-v godinez-demo-data:/app/data`), the DB survives
+> both a plain `docker restart` and a full recreate (`stop && rm && run`
+> with the same `-v` flag) — only `docker volume rm godinez-demo-data`
+> destroys it. Without that flag, the DB lives in the container's
+> writable layer and is lost on recreate (though it still survives a
+> plain restart). The `docker compose` deployment (section 8) always uses
+> a real volume regardless.
 
 ### Token usage and context size
 
@@ -792,5 +842,6 @@ deactivate
 | Check Tailscale link to DGX | `tailscale status` |
 | Check DGX vLLM endpoint | `curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8003/v1/models` |
 | Check persistence status | `curl -s http://localhost:8000/api/persistence/status` |
+| Check tracing status | `curl -s http://localhost:8000/health` (see `tracing_enabled`) |
 | Inspect SQLite DB (single container) | `docker exec godinez-demo python3 -c "import sqlite3; ..."` (see section 7) |
 | Get a session's full history | `curl -s http://localhost:8000/api/results/{session_id}` |
