@@ -11,7 +11,7 @@ from ..state import GodinezState
 from ...tools.oee_calculator import calculate_oee, calculate_average_oee
 from ...tools.csv_reader import read_production_csv
 from ...tools.chart_generator import create_oee_trend_chart, create_downtime_pie_chart
-from ...config import DATA_DIR
+from ...tools.data_paths import resolve_csv_path
 
 
 def oee_analysis_node(state: GodinezState) -> GodinezState:
@@ -31,7 +31,7 @@ def oee_analysis_node(state: GodinezState) -> GodinezState:
     
     try:
         # ── Step 1: Read production data ─────────────────
-        csv_path = DATA_DIR / "sample_production.csv"
+        csv_path = resolve_csv_path(state.get("csv_path"))
         
         if not csv_path.exists():
             errors.append(f"Production data CSV not found: {csv_path}")

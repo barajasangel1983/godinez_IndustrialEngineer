@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from src.config import DATA_DIR
 from src.tools.csv_reader import read_production_csv, get_machine_ids, get_date_range
+from src.tools.data_paths import safe_data_path
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -61,14 +62,10 @@ def _timestamped_name(original_filename: str) -> str:
 
 def _safe_data_path(filename: str) -> Path:
     """Resolve filename to an absolute path inside DATA_DIR; reject traversal attempts."""
-    safe_name = Path(filename).name
-    if safe_name != filename:
-        raise HTTPException(status_code=400, detail="Filename must not contain path separators")
-    target = (DATA_DIR / safe_name).resolve()
-    # Confirm the resolved path is still inside DATA_DIR
-    if not str(target).startswith(str(DATA_DIR.resolve())):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    return target
+    try:
+        return safe_data_path(filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _dataset_info(path: Path) -> DatasetInfo:

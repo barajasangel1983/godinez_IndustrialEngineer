@@ -13,6 +13,7 @@ from . import oee_analysis
 from . import bottleneck
 from . import cost_analysis
 from . import trend_analysis
+from . import load_dataset
 
 # Phase 1+ analysis capabilities
 ANALYSIS_HANDLERS = {
@@ -20,6 +21,7 @@ ANALYSIS_HANDLERS = {
     "bottleneck": bottleneck.bottleneck_node,
     "cost": cost_analysis.cost_node,
     "trend": trend_analysis.trend_analysis_node,
+    "load_dataset": load_dataset.load_dataset_node,
 }
 
 

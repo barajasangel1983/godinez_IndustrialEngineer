@@ -21,6 +21,15 @@ INTENT_KEYWORDS = {
 def router_node(state: GodinezState) -> GodinezState:
     """Classify intent based on query keywords (Phase 0: simple matching)."""
 
+    # Deterministic system commands (e.g. "load dataset") are already
+    # classified by intake_node — don't let keyword matching overwrite them.
+    if state.get("intent") == "load_dataset":
+        return {
+            "intent": "load_dataset",
+            "confidence": 1.0,
+            "metadata": {**state.get("metadata", {}), "router_intent": "load_dataset"},
+        }
+
     query = state.get("query", "").lower()
     detected_intent = "general"
     confidence = 0.5  # Low confidence for keyword matching

@@ -13,6 +13,7 @@ import numpy as np
 from ..state import GodinezState
 from ...tools.csv_reader import read_production_csv, filter_by_machine, filter_by_date
 from ...tools.analysis.trend_engine import TrendEngine
+from ...tools.data_paths import resolve_csv_path
 
 
 def trend_analysis_node(state: GodinezState) -> dict:
@@ -28,7 +29,7 @@ def trend_analysis_node(state: GodinezState) -> dict:
 
     try:
         # Load data
-        csv_path = state.get("csv_path", "data/synthetic_production.csv")
+        csv_path = resolve_csv_path(state.get("csv_path"))
         rows = read_production_csv(csv_path)
 
         # Filter by machine if specified

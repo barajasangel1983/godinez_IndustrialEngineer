@@ -11,7 +11,7 @@ from typing import Optional
 from ..state import GodinezState
 from ...tools.csv_reader import read_production_csv, filter_by_machine
 from ...tools.analysis.cost_estimator import CostEstimator
-from ...config import DATA_DIR
+from ...tools.data_paths import resolve_csv_path
 
 
 def cost_node(state: GodinezState) -> GodinezState:
@@ -32,7 +32,7 @@ def cost_node(state: GodinezState) -> GodinezState:
     target_machine = entities.get("machine_id") or None
 
     try:
-        csv_path = DATA_DIR / "sample_production.csv"
+        csv_path = resolve_csv_path(state.get("csv_path"))
         if not csv_path.exists():
             errors.append(f"Cost data CSV not found: {csv_path}")
             return {

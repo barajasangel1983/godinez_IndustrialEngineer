@@ -100,6 +100,19 @@ def classify_node(state: GodinezState) -> GodinezState:
     errors = state.get("errors", [])
     llm_used = "none"
 
+    # --- Deterministic system commands bypass classification entirely ---
+    if state.get("intent") == "load_dataset":
+        return {
+            **state,
+            "confidence": 1.0,
+            "human_review": False,
+            "errors": errors,
+            "metadata": {
+                **state.get("metadata", {}),
+                "classify_method": "skipped_system_command",
+            },
+        }
+
     # --- Attempt 1: Primary LLM ---
     llm = None
     content = None

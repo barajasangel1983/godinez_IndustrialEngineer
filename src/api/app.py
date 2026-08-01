@@ -27,7 +27,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.graph import build_workflow
+from src.graph.session_datasets import get_active_dataset
 from src.api.data_routes import router as data_router
+from src.config import DATA_DIR
 
 # ── Persistence (optional, enabled via DATABASE_URL env var) ────
 from src.persistence import init_db, is_persistence_available
@@ -177,7 +179,11 @@ def _run_query(
         initial_state = {
             "query": query,
             "messages": [{"role": "user", "content": query}],
+            "session_id": session_id,
         }
+        active_dataset = get_active_dataset(session_id)
+        if active_dataset:
+            initial_state["csv_path"] = str(DATA_DIR / active_dataset)
 
         # Run the workflow
         result = compiled.invoke(initial_state)

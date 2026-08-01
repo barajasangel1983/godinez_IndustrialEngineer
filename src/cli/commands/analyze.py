@@ -15,8 +15,10 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
 
 from src.graph import build_workflow
+from src.graph.session_datasets import get_active_dataset
 from src.persistence import is_persistence_available
 from src.persistence.repositories import persist_query_result
+from src.config import DATA_DIR
 
 
 def analyze(args):
@@ -36,7 +38,11 @@ def analyze(args):
     initial_state = {
         "query": query,
         "messages": [{"role": "user", "content": query}],
+        "session_id": session_id,
     }
+    active_dataset = get_active_dataset(session_id)
+    if active_dataset:
+        initial_state["csv_path"] = str(DATA_DIR / active_dataset)
 
     # Run the workflow
     result = compiled.invoke(initial_state)

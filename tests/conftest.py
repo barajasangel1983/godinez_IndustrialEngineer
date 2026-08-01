@@ -15,6 +15,21 @@ from src.graph.nodes.classify import _keyword_fallback
 def _mock_classify_node(state):
     """Replace classify_node with keyword-only fallback."""
     from src.graph.nodes.classify import _keyword_fallback
+
+    # Mirror the real classify_node's short-circuit for deterministic
+    # system commands (e.g. "load dataset") — these bypass classification
+    # entirely and must not be reclassified by keyword matching.
+    if state.get("intent") == "load_dataset":
+        return {
+            **state,
+            "confidence": 1.0,
+            "human_review": False,
+            "metadata": {
+                **state.get("metadata", {}),
+                "classify_method": "skipped_system_command",
+            },
+        }
+
     result = _keyword_fallback(state.get("query", ""))
     return {
         **state,

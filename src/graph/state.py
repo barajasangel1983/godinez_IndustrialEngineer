@@ -92,7 +92,9 @@ class GodinezState(MessagesState):
     # ── Input ──────────────────────────────────────────────
     query: str                          # Raw natural language input
     user_id: Optional[str] = None       # Optional session/user ID
+    session_id: Optional[str] = None    # Session ID (used to scope the active dataset)
     timestamp: Optional[str] = None     # When the query was received
+    csv_path: Optional[str] = None      # Active dataset path for this query
 
     # ── Classification ─────────────────────────────────────
     intent: Optional[str] = None        # Classified intent (e.g. "oee", "bottleneck", "trend")

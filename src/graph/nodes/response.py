@@ -10,6 +10,7 @@ import io
 from ..state import GodinezState
 from ...tools.chart_templates import create_oee_trend_chart, create_pareto_chart, create_control_chart
 from ...tools.chart_palette import PALETTE, apply_style
+from ...tools.data_paths import resolve_csv_path
 
 
 def response_node(state: GodinezState) -> GodinezState:
@@ -53,6 +54,7 @@ _LLM_DISPLAY_NAMES = {
     "primary": "Qwen3.6-35B-A3B (DGX)",
     "ollama": "qwen3:8b (Ollama fallback)",
     "keyword_fallback": "keyword matching (no LLM reachable)",
+    "skipped_system_command": "n/a (system command)",
 }
 
 
@@ -64,7 +66,7 @@ def _describe_llm(classify_method: str | None) -> str:
 def _generate_trend_charts(analysis_results: dict, state: GodinezState) -> list[dict]:
     """Generate trend analysis charts and return file paths + base64 data."""
     charts = []
-    csv_path = state.get("csv_path", "data/synthetic_production.csv")
+    csv_path = resolve_csv_path(state.get("csv_path"))
 
     try:
         from ...tools.csv_reader import read_production_csv

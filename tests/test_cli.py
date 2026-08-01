@@ -63,6 +63,19 @@ class TestAnalyzeCommand:
 # ── config command ────────────────────────────────────────────────
 
 class TestConfigCommand:
+    @pytest.fixture(autouse=True)
+    def _restore_database_url_env(self):
+        # config_set("database.url", ...) sets os.environ["DATABASE_URL"] as a
+        # real side effect (src/cli/commands/config.py:132) so persistence
+        # picks up the change immediately — restore it after each test so a
+        # leaked postgresql:// URL doesn't break later tests hitting /api/query.
+        original = os.environ.get("DATABASE_URL")
+        yield
+        if original is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = original
+
     def test_config_show_runs_without_error(self, capsys):
         from src.cli.commands.config import config_show
         config_show()
