@@ -3,6 +3,7 @@
 > **Audience:** Personal reference  
 > **LLM fallback chain:** NVIDIA-Nemotron-Nano-9B-v2 via vLLM on the DGX Spark (primary) → Ollama `qwen3:8b` (local fallback) → keyword matching (final fallback). No OpenAI key required.  
 > **DGX reachability:** the classify node hits `DGX_VLLM_URL` directly (default `http://100.74.225.3:8003/v1`) — on a VPS this only works if Tailscale is up and connected to the DGX Spark's tailnet.  
+> **Persistence:** enabled by default in this environment's `.env` (`DATABASE_URL=sqlite:///data/godinez.db`) — every query and the active dataset per session are saved. `.env.example` still ships with `DATABASE_URL=off` as the safe default for a fresh clone; see section 7 to toggle it.  
 > **Sections with OS differences:** Linux and Windows (PowerShell) blocks shown separately  
 > **Docker sections:** identical on both platforms
 
@@ -501,13 +502,16 @@ curl -s -X POST http://localhost:8000/api/query \
 
 ---
 
-## 7. Build & Run — Single Container (No DB)
+## 7. Build & Run — Single Container
 
-No Compose, no Postgres. Simplest container demo. `DATABASE_URL=off` in `.env`
-skips persistence entirely — results aren't saved across restarts, but the
-CLI/API analysis flow works. Sample CSVs (`sample_production.csv`,
+No Compose, no Postgres — simplest container path. `DATABASE_URL` in `.env`
+controls persistence: `off` skips it entirely (CLI/API analysis still
+works, nothing saved), or `sqlite:///data/godinez.db` enables it with
+zero extra setup (see "Enable persistence" below — this is this
+environment's current setting). Sample CSVs (`sample_production.csv`,
 `synthetic_production.csv`) are baked into the image at build time (see
-`Dockerfile`), so no upload step or volume mount is needed for this demo.
+`Dockerfile`), so no upload step or volume mount is needed for this demo
+either way.
 
 ### Build
 ```bash
@@ -564,13 +568,11 @@ docker logs godinez-demo --follow
 
 ### Enable persistence (SQLite) and inspect it directly
 
-By default this demo runs with `DATABASE_URL=off` (no DB). To turn
-persistence on without standing up Postgres/Compose, set in `.env`:
-```env
-DATABASE_URL=sqlite:///data/godinez.db
-```
-then rebuild and recreate the container (section 7 build/run steps above).
-On startup you should see Alembic run both migrations:
+`DATABASE_URL=off` is the fresh-clone default in `.env.example` — no DB.
+**This environment's `.env` currently has it on** (`DATABASE_URL=sqlite:///data/godinez.db`),
+which is how persistence gets enabled without standing up Postgres/Compose:
+set that in `.env`, then rebuild and recreate the container (section 7
+build/run steps above). On startup you should see Alembic run both migrations:
 ```
 Running upgrade  -> 001, empty message
 Running upgrade 001 -> 002, add active_dataset column to sessions
@@ -741,3 +743,6 @@ deactivate
 | Pull Ollama model | `ollama pull qwen3:8b` |
 | Check Tailscale link to DGX | `tailscale status` |
 | Check DGX vLLM endpoint | `curl -s -o /dev/null -w "%{http_code}" http://100.74.225.3:8003/v1/models` |
+| Check persistence status | `curl -s http://localhost:8000/api/persistence/status` |
+| Inspect SQLite DB (single container) | `docker exec godinez-demo python3 -c "import sqlite3; ..."` (see section 7) |
+| Get a session's full history | `curl -s http://localhost:8000/api/results/{session_id}` |
