@@ -122,8 +122,9 @@ def create_oee_trend_chart(
             forecast_x = list(range(forecast_start, forecast_start + forecast_days + 1))
             forecast_y = []
             base = oee_scores[-1]
+            trend_direction = {"up": 1, "down": -1, "stable": 0}.get(trend.direction, 0)
             for i in range(forecast_days + 1):
-                val = base + trend["slope"] * (i + 1) * trend["direction"]
+                val = base + trend.slope * (i + 1) * trend_direction
                 forecast_y.append(max(0, min(100, round(val, 1))))
 
             ax1.plot(

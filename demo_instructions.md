@@ -349,6 +349,79 @@ REST-only — no prompt command for this. See section 6 (`DELETE /api/data/{file
 
 ---
 
+## 6b. Chart & Graph Testing
+
+Test each chart type one at a time. Load the larger dataset first —
+`synthetic_production.csv` has 728 rows across 6 months and 4 machines,
+enough to clear every chart's data threshold (the default
+`sample_production.csv` is too small for the control chart, see below):
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Load dataset \"synthetic_production.csv\"", "session_id": "chart-test"}'
+```
+
+### Trend intent — 3 charts, returned in the API response
+
+`trend` is the only intent whose charts actually come back in the JSON
+response, base64-encoded in the `charts` field.
+
+> **Gotcha:** `router_node` (`src/graph/nodes/router.py`) does a simple
+> first-match keyword scan over the query, checked in this order: `oee`,
+> `bottleneck`, `trend`, `cost`, `safety`, `time_study`. A prompt containing
+> both "oee" and "trend" (e.g. *"Show me the OEE trend"*) matches `oee`
+> first and never reaches the `trend` branch — this **overrides** whatever
+> the real LLM classifier decided. Avoid the word "OEE" in trend prompts;
+> use "trend", "forecast", "projection", or "time series" instead.
+
+**1. OEE trend chart** (always generated if any data matches):
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Show me the trend analysis", "session_id": "chart-test"}' \
+  | python3 -c 'import json,sys,base64; d=json.load(sys.stdin); [open(c["filename"],"wb").write(base64.b64decode(c["base64"])) for c in d["charts"]]; print([c["type"] for c in d["charts"]])'
+# Expected: ["oee_trend", "control", "pareto"]
+```
+
+**2. Control chart** (needs ≥10 distinct dates in range — the full
+`synthetic_production.csv` range qualifies; same command as above).
+
+**3. Pareto chart** (needs ≥2 distinct downtime reasons — same command
+as above).
+
+The command above writes `oee_trend.png`, `control_chart.png`, and
+`pareto_chart.png` to your current directory so you can open them directly.
+
+### OEE intent — 2 charts, generated but NOT returned by the API
+
+`oee_analysis_node` also builds an OEE trend chart and a downtime pie
+chart (via a separate, older chart module), but `QueryResponse` has no
+`attachments` field — they're rendered to a temp path inside the
+container and then dropped, never reaching the JSON response. To confirm
+they're generated and inspect them:
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is our OEE?", "session_id": "chart-test"}' > /dev/null
+
+docker exec godinez-demo sh -c 'ls -la /tmp/*.png'
+docker cp godinez-demo:/tmp/oee_trend_chart.png ./oee_chart_from_oee_intent.png
+```
+
+### Bottleneck / cost intents — no charts
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Show me bottlenecks", "session_id": "chart-test"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["charts"])'
+# Expected: null — text-only response, no chart generation for this intent
+```
+
+---
+
 ## 7. Build & Run — Single Container (No DB)
 
 No Compose, no Postgres. Simplest container demo. `DATABASE_URL=off` in `.env`
