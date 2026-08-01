@@ -217,7 +217,10 @@ curl.exe -s -o NUL -w "%{http_code}" `
 # Expected: 200
 ```
 
-### Upload a dataset
+### Dataset upload / list / switch
+
+Covered in full in **section 6a** (upload, list via REST or prompt, switch the
+active dataset per session). Quick smoke test:
 
 **Linux**
 ```bash
@@ -232,12 +235,6 @@ curl -s -o /dev/null -w "%{http_code}" \
 curl.exe -s -o NUL -w "%{http_code}" `
   -X POST http://localhost:8000/api/data `
   -F "file=@data/sample_production.csv"
-# Expected: 200
-```
-
-### List uploaded datasets
-```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/data/list
 # Expected: 200
 ```
 
@@ -256,7 +253,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 ---
 
-## 6a. Dataset Management — Upload & Switch
+## 6a. Dataset Management — Upload, List & Switch
 
 Every analysis query (`oee`, `bottleneck`, `cost`, `trend`) reads a CSV dataset.
 Without any dataset selection, every session defaults to
@@ -311,10 +308,18 @@ curl -s -X POST http://localhost:8000/api/query \
 # Reads synthetic_production.csv, not the default sample_production.csv
 ```
 
-### List available datasets (via prompt)
+### List available datasets
 
-Same deterministic matching, no LLM call. Recognized phrasings: `list datasets`,
-`show datasets`, `show me the available datasets`, `what datasets are available`,
+Two equivalent ways to see what's in `data/`:
+
+**Via REST** (raw JSON: filename, size, columns, date range, machine IDs):
+```bash
+curl -s http://localhost:8000/api/data/list | python3 -m json.tool
+```
+
+**Via prompt** (same deterministic matching as `Load dataset`, no LLM call).
+Recognized phrasings: `list datasets`, `show datasets`,
+`show me the available datasets`, `what datasets are available`,
 `available datasets`.
 
 ```bash
@@ -323,14 +328,18 @@ curl -s -X POST http://localhost:8000/api/query \
   -d '{"query": "List datasets", "session_id": "demo-01"}'
 ```
 
-Lists every `.csv` in `data/` (including uploads) with row count and date
-range, and marks whichever one is active for that `session_id`:
+The prompt version formats the same info as a readable summary and marks
+whichever dataset is active for that `session_id`:
 
 ```
 📁 Available datasets (2):
   - sample_production.csv — 66 rows, 2024-01-01 to 2024-01-30
   - synthetic_production.csv (active) — 728 rows, 2024-01-01 to 2024-06-30
 ```
+
+### Delete a dataset
+
+REST-only — no prompt command for this. See section 6 (`DELETE /api/data/{filename}`).
 
 > **Note:** the active dataset is tracked in-memory per process
 > (`src/graph/session_datasets.py`), scoped to `session_id`. It resets on
