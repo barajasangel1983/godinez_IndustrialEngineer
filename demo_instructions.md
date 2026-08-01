@@ -57,6 +57,40 @@ If neither DGX nor Ollama is reachable, classification falls through to
 keyword matching — analysis still works, just with lower-confidence intent
 detection.
 
+### 2c. Adding / changing a model
+
+Unlike datasets (section 6a), there's no runtime `load model` prompt command
+— the classify node (`src/graph/nodes/classify.py`) is the only place an LLM
+is used anywhere in this codebase, and both models are hardcoded there.
+Changing one is a source edit + rebuild, not an API call.
+
+**To change the Ollama fallback model:**
+
+1. Pull the new model:
+   ```bash
+   ollama pull <model-name>       # e.g. ollama pull llama3.2
+   ollama list                    # confirm it shows up
+   ```
+2. Edit `src/graph/nodes/classify.py` — `_get_llm_ollama()` (around line 62):
+   change `model="qwen3:8b"` to `model="<model-name>"`.
+3. Rebuild and restart (local: just re-run `python main.py server`; Docker:
+   `docker build -t godinez:latest . && docker stop godinez-demo && docker rm godinez-demo && docker run -d --name godinez-demo -p 8000:8000 --env-file .env godinez:latest`).
+
+**To point at a different DGX / vLLM-served model:**
+
+1. Set `DGX_VLLM_URL` in `.env` to the new endpoint (if it's a different
+   host/port than the current one).
+2. Edit `_get_llm_primary()` (around line 50) — change
+   `model="Qwen/Qwen3.6-35B-A3B"` to whatever model ID that vLLM instance
+   serves (check with `curl <DGX_VLLM_URL>/models`).
+3. Rebuild and restart as above.
+
+**Note:** `LLM_MODEL` / `LLM_TEMPERATURE` in `.env` and
+`config --show` are defined in `src/config/` but are currently **not**
+wired into `classify.py` — changing them has no effect on which model
+actually runs. Editing the two `_get_llm_*()` functions directly is the
+only thing that works today.
+
 ---
 
 ## 3. Local Setup
@@ -405,7 +439,7 @@ response, base64-encoded in the `charts` field.
 ```bash
 curl -s -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "Show me the trend analysis", "session_id": "chart-test"}' \
+  -d '{"query": "Show me the OEE trend analysis", "session_id": "chart-test"}' \
   | python3 -c 'import json,sys,base64; d=json.load(sys.stdin); [open(c["filename"],"wb").write(base64.b64decode(c["base64"])) for c in d["charts"]]; print([c["type"] for c in d["charts"]])'
 # Expected: ["oee_trend", "control", "pareto"]
 ```
