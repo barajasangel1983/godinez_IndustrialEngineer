@@ -6,6 +6,7 @@ Future phases: LLM-based intent classification, confidence scoring.
 """
 
 from ..state import GodinezState
+from ...tools.dataset_command import DATASET_SYSTEM_INTENTS
 
 # Phase 0: Simple keyword matching
 INTENT_KEYWORDS = {
@@ -21,13 +22,15 @@ INTENT_KEYWORDS = {
 def router_node(state: GodinezState) -> GodinezState:
     """Classify intent based on query keywords (Phase 0: simple matching)."""
 
-    # Deterministic system commands (e.g. "load dataset") are already
-    # classified by intake_node — don't let keyword matching overwrite them.
-    if state.get("intent") == "load_dataset":
+    # Deterministic system commands (e.g. "load dataset", "list datasets")
+    # are already classified by intake_node — don't let keyword matching
+    # overwrite them.
+    intent = state.get("intent")
+    if intent in DATASET_SYSTEM_INTENTS:
         return {
-            "intent": "load_dataset",
+            "intent": intent,
             "confidence": 1.0,
-            "metadata": {**state.get("metadata", {}), "router_intent": "load_dataset"},
+            "metadata": {**state.get("metadata", {}), "router_intent": intent},
         }
 
     query = state.get("query", "").lower()

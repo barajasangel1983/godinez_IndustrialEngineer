@@ -316,6 +316,26 @@ fixture on `TestConfigCommand` that snapshots/restores `DATABASE_URL`.
 Test count: 297 → 320 (318 passing; 2 pre-existing `test_observability.py`
 tracing failures need a real `LANGSMITH_API_KEY`, unrelated).
 
+### 3. "List datasets" command
+
+Same pattern as `load_dataset`, added right after: a `List datasets`
+prompt (also `show datasets`, `show me the available datasets`, `what
+datasets are available`, `available datasets`) is detected deterministically
+in `intake_node` via a second regex in `src/tools/dataset_command.py`
+(`is_list_datasets_command`), short-circuits `classify_node`/`router_node`
+the same way `load_dataset` does — both now share one
+`DATASET_SYSTEM_INTENTS` set instead of checking `== "load_dataset"`
+individually — and dispatches to a new `list_datasets_node` in
+`src/graph/nodes/load_dataset.py`. It lists every `.csv` in `DATA_DIR`
+(including uploads) with row count and date range, and marks whichever one
+is active for the calling `session_id` via `get_active_dataset()`.
+`tests/conftest.py`'s LLM-mocking shim needed the same short-circuit update
+(it checks intent independently of the real `classify_node`, so it silently
+diverges whenever a new deterministic intent is added — worth remembering
+for the next one).
+
+Test count: 320 → 337 (335 passing, same 2 pre-existing tracing failures).
+
 ## Commits
 
 ```

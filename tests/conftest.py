@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import patch
 from src.graph.nodes.classify import _keyword_fallback
+from src.tools.dataset_command import DATASET_SYSTEM_INTENTS
 
 
 def _mock_classify_node(state):
@@ -17,9 +18,10 @@ def _mock_classify_node(state):
     from src.graph.nodes.classify import _keyword_fallback
 
     # Mirror the real classify_node's short-circuit for deterministic
-    # system commands (e.g. "load dataset") — these bypass classification
-    # entirely and must not be reclassified by keyword matching.
-    if state.get("intent") == "load_dataset":
+    # system commands (e.g. "load dataset", "list datasets") — these
+    # bypass classification entirely and must not be reclassified by
+    # keyword matching.
+    if state.get("intent") in DATASET_SYSTEM_INTENTS:
         return {
             **state,
             "confidence": 1.0,

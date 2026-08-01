@@ -468,7 +468,8 @@ class TestMultiIntentChaining:
         assert "cost" in ANALYSIS_HANDLERS
         assert "trend" in ANALYSIS_HANDLERS
         assert "load_dataset" in ANALYSIS_HANDLERS
-        assert len(ANALYSIS_HANDLERS) == 5
+        assert "list_datasets" in ANALYSIS_HANDLERS
+        assert len(ANALYSIS_HANDLERS) == 6
 
 
 if __name__ == "__main__":

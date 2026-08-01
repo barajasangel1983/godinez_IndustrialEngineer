@@ -1,15 +1,18 @@
 """
-Load Dataset Node — Handles the "load dataset <file>" system command.
+Load Dataset Node — Handles the "load dataset <file>" and "list datasets"
+system commands.
 
-Sets the requested CSV as the active dataset for the current session (see
-src/graph/session_datasets.py). Every subsequent query in that session
-picks it up via csv_path resolution in the other analysis nodes.
+"load dataset" sets the requested CSV as the active dataset for the
+current session (see src/graph/session_datasets.py). Every subsequent
+query in that session picks it up via csv_path resolution in the other
+analysis nodes. "list datasets" is read-only — it just reports what's
+available in DATA_DIR and which one is currently active.
 """
 
 from ..state import GodinezState
-from ..session_datasets import set_active_dataset
+from ..session_datasets import set_active_dataset, get_active_dataset
 from ...tools.csv_reader import read_production_csv, get_machine_ids, get_date_range
-from ...tools.data_paths import safe_data_path
+from ...tools.data_paths import safe_data_path, DEFAULT_DATASET
 from ... import config
 
 
@@ -76,5 +79,41 @@ def load_dataset_node(state: GodinezState) -> dict:
             "load_dataset": "success",
             "active_dataset": target.name,
             "row_count": len(rows),
+        },
+    }
+
+
+def list_datasets_node(state: GodinezState) -> dict:
+    """List CSV datasets available in DATA_DIR, marking the session's active one."""
+
+    session_id = state.get("session_id")
+    active = get_active_dataset(session_id) if session_id else None
+    active = active or DEFAULT_DATASET
+
+    csv_files = sorted(config.DATA_DIR.glob("*.csv"))
+    if not csv_files:
+        return {
+            "response": f"No datasets found in {config.DATA_DIR}.",
+            "metadata": {"list_datasets": "empty"},
+        }
+
+    lines = []
+    for path in csv_files:
+        marker = " (active)" if path.name == active else ""
+        try:
+            rows = read_production_csv(path)
+            start, end = get_date_range(rows)
+            lines.append(f"  - {path.name}{marker} — {len(rows)} rows, {start} to {end}")
+        except Exception:
+            lines.append(f"  - {path.name}{marker} — (unparseable)")
+
+    response = f"📁 Available datasets ({len(csv_files)}):\n" + "\n".join(lines)
+
+    return {
+        "response": response,
+        "metadata": {
+            "list_datasets": "success",
+            "dataset_count": len(csv_files),
+            "active_dataset": active,
         },
     }

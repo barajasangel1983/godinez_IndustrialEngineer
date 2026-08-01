@@ -8,7 +8,7 @@ Phase 2+: Add NLP parsing, intent classification, data requirement extraction.
 from datetime import datetime, timezone
 
 from ..state import GodinezState
-from ...tools.dataset_command import extract_dataset_filename
+from ...tools.dataset_command import extract_dataset_filename, is_list_datasets_command
 
 
 def intake_node(state: GodinezState) -> GodinezState:
@@ -29,12 +29,13 @@ def intake_node(state: GodinezState) -> GodinezState:
         "metadata": {**state.get("metadata", {}), "phase": "0"},
     }
 
-    # Deterministically detect "load dataset <file>" commands before
-    # classification ever runs — this is a system command, not something
-    # that should depend on LLM availability or correctness.
+    # Deterministically detect dataset system commands before classification
+    # ever runs — these shouldn't depend on LLM availability or correctness.
     dataset_filename = extract_dataset_filename(query)
     if dataset_filename:
         result["intent"] = "load_dataset"
         result["entities"] = {**state.get("entities", {}), "dataset_filename": dataset_filename}
+    elif is_list_datasets_command(query):
+        result["intent"] = "list_datasets"
 
     return result

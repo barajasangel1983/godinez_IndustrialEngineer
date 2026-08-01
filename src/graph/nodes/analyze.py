@@ -22,6 +22,7 @@ ANALYSIS_HANDLERS = {
     "cost": cost_analysis.cost_node,
     "trend": trend_analysis.trend_analysis_node,
     "load_dataset": load_dataset.load_dataset_node,
+    "list_datasets": load_dataset.list_datasets_node,
 }
 
 

@@ -19,6 +19,7 @@ from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 
 from ..state import GodinezState
+from ...tools.dataset_command import DATASET_SYSTEM_INTENTS
 
 # ── Valid intents ─────────────────────────────────────────
 VALID_INTENTS = [
@@ -101,7 +102,7 @@ def classify_node(state: GodinezState) -> GodinezState:
     llm_used = "none"
 
     # --- Deterministic system commands bypass classification entirely ---
-    if state.get("intent") == "load_dataset":
+    if state.get("intent") in DATASET_SYSTEM_INTENTS:
         return {
             **state,
             "confidence": 1.0,

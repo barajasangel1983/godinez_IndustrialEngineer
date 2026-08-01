@@ -127,7 +127,7 @@ python main.py --help
 
 ```bash
 python -m pytest --tb=short -q
-# Expected: 320 passed in ~25s
+# Expected: 335 passed in ~25s
 # (2 tracing tests in test_observability.py require a real LANGSMITH_API_KEY
 # and will fail without one — unrelated to the rest of the suite)
 ```
@@ -138,7 +138,7 @@ python -m pytest tests/test_workflow.py -q        # 40 tests — graph + nodes
 python -m pytest tests/test_api.py -q             # 12 tests — FastAPI endpoints
 python -m pytest tests/test_phase4.py -q          # 25 tests — bottleneck + cost
 python -m pytest tests/test_comprehensive.py -q   # 60 tests — edge cases + security
-python -m pytest tests/test_load_dataset.py -q    # 23 tests — dataset load command
+python -m pytest tests/test_load_dataset.py -q    # 40 tests — dataset load/list commands
 ```
 
 ---
@@ -163,7 +163,10 @@ python main.py analyze "Show me bottlenecks on Line 2" --session demo-01
 # Run a cost analysis query
 python main.py analyze "What is our total waste cost?" --session demo-01
 
-# Switch the dataset used for the rest of this session (see section 6a)
+# See what datasets are available (see section 6a)
+python main.py analyze "List datasets" --session demo-01
+
+# Switch the dataset used for the rest of this session
 python main.py analyze 'Load dataset "synthetic_production.csv"' --session demo-01
 
 # This query now reads synthetic_production.csv, not the default sample_production.csv
@@ -306,6 +309,27 @@ curl -s -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "What is the OEE trend?", "session_id": "demo-01"}'
 # Reads synthetic_production.csv, not the default sample_production.csv
+```
+
+### List available datasets (via prompt)
+
+Same deterministic matching, no LLM call. Recognized phrasings: `list datasets`,
+`show datasets`, `show me the available datasets`, `what datasets are available`,
+`available datasets`.
+
+```bash
+curl -s -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "List datasets", "session_id": "demo-01"}'
+```
+
+Lists every `.csv` in `data/` (including uploads) with row count and date
+range, and marks whichever one is active for that `session_id`:
+
+```
+📁 Available datasets (2):
+  - sample_production.csv — 66 rows, 2024-01-01 to 2024-01-30
+  - synthetic_production.csv (active) — 728 rows, 2024-01-01 to 2024-06-30
 ```
 
 > **Note:** the active dataset is tracked in-memory per process
@@ -504,6 +528,7 @@ deactivate
 | Run a query (CLI) | `python main.py analyze "..."` |
 | Upload a dataset | `curl -X POST /api/data -F "file=@x.csv"` |
 | Switch active dataset (session) | `python main.py analyze 'Load dataset "x.csv"' --session S` |
+| List available datasets (prompt) | `python main.py analyze "List datasets" --session S` |
 | Build container | `docker build -t godinez:latest .` |
 | Start full stack | `docker compose up --build -d` |
 | View app logs | `docker compose logs app --follow` |

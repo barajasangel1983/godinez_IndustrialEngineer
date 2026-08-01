@@ -16,10 +16,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-from src.tools.dataset_command import extract_dataset_filename
+from src.tools.dataset_command import extract_dataset_filename, is_list_datasets_command
 from src.tools.data_paths import resolve_csv_path, safe_data_path, DEFAULT_DATASET
 from src.graph import session_datasets
-from src.graph.nodes.load_dataset import load_dataset_node
+from src.graph.nodes.load_dataset import load_dataset_node, list_datasets_node
 from src.api.app import app
 
 client = TestClient(app)
@@ -56,6 +56,30 @@ class TestExtractDatasetFilename:
     ])
     def test_non_matches_return_none(self, query):
         assert extract_dataset_filename(query) is None
+
+
+class TestIsListDatasetsCommand:
+
+    @pytest.mark.parametrize("query", [
+        "list datasets",
+        "List Datasets",
+        "list the datasets",
+        "show datasets",
+        "show me the available datasets",
+        "what datasets are available",
+        "what datasets are available?",
+        "available datasets",
+    ])
+    def test_recognized_phrasings(self, query):
+        assert is_list_datasets_command(query) is True
+
+    @pytest.mark.parametrize("query", [
+        "What is our OEE?",
+        'Load dataset "sample_production.csv"',
+        "list the machines",
+    ])
+    def test_non_matches_return_false(self, query):
+        assert is_list_datasets_command(query) is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -136,6 +160,34 @@ class TestLoadDatasetNode:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Unit — list_datasets_node
+# ═══════════════════════════════════════════════════════════════════
+
+class TestListDatasetsNode:
+
+    def test_lists_committed_datasets(self):
+        result = list_datasets_node({"session_id": "s1"})
+        assert result["metadata"]["list_datasets"] == "success"
+        assert "sample_production.csv" in result["response"]
+        assert "synthetic_production.csv" in result["response"]
+
+    def test_marks_default_as_active_when_nothing_loaded(self):
+        result = list_datasets_node({"session_id": "never-loaded-session"})
+        assert result["metadata"]["active_dataset"] == DEFAULT_DATASET
+        assert f"{DEFAULT_DATASET} (active)" in result["response"]
+
+    def test_marks_loaded_dataset_as_active(self):
+        session_datasets.set_active_dataset("s-loaded", "synthetic_production.csv")
+        result = list_datasets_node({"session_id": "s-loaded"})
+        assert result["metadata"]["active_dataset"] == "synthetic_production.csv"
+        assert "synthetic_production.csv (active)" in result["response"]
+
+    def test_no_session_id_still_lists_with_default_active(self):
+        result = list_datasets_node({"session_id": None})
+        assert result["metadata"]["active_dataset"] == DEFAULT_DATASET
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Integration — real graph, no LLM call needed for load_dataset intent
 # ═══════════════════════════════════════════════════════════════════
 
@@ -161,6 +213,29 @@ class TestLoadDatasetEndToEnd:
         body = resp.json()
         assert "not found" in body["response"].lower()
         assert session_datasets.get_active_dataset("e2e-session-2") is None
+
+    def test_list_datasets_command_via_api(self):
+        resp = client.post("/api/query", json={
+            "query": "List datasets",
+            "session_id": "e2e-list-session",
+        })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["intent"] == "list_datasets"
+        assert "sample_production.csv" in body["response"]
+        assert "synthetic_production.csv" in body["response"]
+
+    def test_list_datasets_reflects_prior_load_in_same_session(self):
+        client.post("/api/query", json={
+            "query": 'Load dataset "synthetic_production.csv"',
+            "session_id": "e2e-list-session-2",
+        })
+        resp = client.post("/api/query", json={
+            "query": "What datasets are available?",
+            "session_id": "e2e-list-session-2",
+        })
+        assert resp.status_code == 200
+        assert "synthetic_production.csv (active)" in resp.json()["response"]
 
 
 # ═══════════════════════════════════════════════════════════════════
