@@ -123,6 +123,7 @@ def get_session_active_dataset(
 # ── Query Repository ──────────────────────────────────────────────
 
 
+@_session_or_default
 def save_query(
     session_id: str,
     query_text: str,
@@ -157,6 +158,7 @@ def save_query(
     return record
 
 
+@_session_or_default
 def get_results_by_session(
     session_id: str,
     *,
@@ -181,6 +183,7 @@ def get_results_by_session(
     return queries
 
 
+@_session_or_default
 def get_query_by_id(
     query_id: int,
     *,
@@ -306,6 +309,7 @@ def get_session_summary(
 # ── Convenience: Full Persistence Pipeline ────────────────────────
 
 
+@_session_or_default
 def persist_query_result(
     session_id: str,
     query_text: str,

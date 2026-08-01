@@ -562,6 +562,49 @@ curl -s -X POST http://localhost:8000/api/query \
 docker logs godinez-demo --follow
 ```
 
+### Enable persistence (SQLite) and inspect it directly
+
+By default this demo runs with `DATABASE_URL=off` (no DB). To turn
+persistence on without standing up Postgres/Compose, set in `.env`:
+```env
+DATABASE_URL=sqlite:///data/godinez.db
+```
+then rebuild and recreate the container (section 7 build/run steps above).
+On startup you should see Alembic run both migrations:
+```
+Running upgrade  -> 001, empty message
+Running upgrade 001 -> 002, add active_dataset column to sessions
+```
+
+Confirm it's live:
+```bash
+curl -s http://localhost:8000/api/persistence/status
+# {"enabled":true,"database_type":"sqlite"}
+```
+
+Run a couple of queries, then look at the actual rows — no volume is
+mounted for this demo, so the DB lives inside the container:
+```bash
+docker exec godinez-demo python3 -c "
+import sqlite3
+conn = sqlite3.connect('/app/data/godinez.db')
+conn.row_factory = sqlite3.Row
+for row in conn.execute('SELECT session_id, active_dataset FROM sessions'):
+    print(dict(row))
+for row in conn.execute('SELECT id, session_id, query_text, intent FROM queries ORDER BY id'):
+    print(dict(row))
+"
+```
+Or through the API instead of raw SQL: `GET /api/results/{session_id}`
+returns the same data (query text, intent, full response, metadata) for
+every query in that session.
+
+> Since there's no volume mount here, the DB resets whenever the container
+> is recreated (`stop && rm && run`) — it survives a plain `docker restart`
+> (same container, same filesystem layer), but not a rebuild/recreate. For
+> data that needs to survive that, use the `docker compose` deployment
+> (section 8), which mounts a real volume.
+
 ### Stop and remove
 ```bash
 docker stop godinez-demo && docker rm godinez-demo

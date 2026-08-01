@@ -442,6 +442,52 @@ silently crashing before the `TrendResult` subscript fix (commit
 `8cc068e`) — now that it actually renders, its true cost shows up. Out of
 scope for this pass; flagged for later if chart latency matters.
 
+### 7. Persistence deep-dive → found and fixed a real production bug
+
+User asked to understand the persistence layer better, then explicitly
+asked to turn it on and watch it work (`DATABASE_URL=off` →
+`sqlite:///data/godinez.db` in `.env`, rebuild, restart). Also fixed a
+smaller inconsistency noticed while explaining it: `set_session_active_
+dataset`/`get_session_active_dataset` (added in commit `2021f39`) weren't
+re-exported from `src/persistence/__init__.py` like every other
+repository function — added.
+
+**Turning it on and actually watching it work surfaced a real bug**:
+`save_query`, `get_results_by_session`, `get_query_by_id`, and
+`persist_query_result` (`src/persistence/repositories.py`) were all
+missing the `@_session_or_default` decorator that every other repository
+function has. `persist_query_result` — the main entry point, called from
+both `app.py:269` (every `/api/query` call) and
+`cli/commands/analyze.py:62` — calls `create_session(..., session=session)`
+then `save_query(..., session=session)` with `session` still `None` (its
+own default, since it's not decorated and no caller passes one). Since
+`save_query` also wasn't decorated, it used that `None` directly:
+`session.add(record)` → `AttributeError: 'NoneType' object has no
+attribute 'add'`. Caught non-fatally by `app.py`'s try/except (prints a
+warning, still serves the response) — so this had been silently failing
+on **every single query** since the persistence layer was written,
+undetected because every test in `test_persistence.py` always passes
+`session=db` explicitly, which bypasses a missing decorator entirely (the
+undecorated function just uses whatever `session` was handed to it — same
+as before, so the tests never exercised the "no session given, decorator
+should create one" path for these specific four functions). Also affects
+`python main.py report --session X` (`get_results_by_session`), same bug.
+
+Fixed by adding `@_session_or_default` to all four. Verified live against
+the actual running container, not just tests: loaded a dataset then ran an
+OEE query in the same session, confirmed via `docker exec` + raw SQLite
+query that `sessions`, `queries`, AND `results` were all populated
+correctly (previously only `sessions.active_dataset` was — the one write
+path, in `session_datasets.py`, that already went through a correctly
+decorated function), then confirmed the same data surfaces correctly
+through `GET /api/results/{session_id}`.
+
+**Secondary, smaller gap noticed, not fixed:** persisted `confidence` is
+always `null` — `app.py` reads `response.metadata.get
+("classification_confidence")`, but `classify_node` sets `state
+["confidence"]` directly, never nests it under that metadata key. Cosmetic
+(nothing crashes), separate issue.
+
 ## Commits
 
 ```
